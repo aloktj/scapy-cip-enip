@@ -44,6 +44,8 @@ class SessionHandle:
     session_id: str
     client: PLCClient
     status: ConnectionStatus
+    host: str
+    port: int
     created_at: float = field(default_factory=time.time)
     last_activity_at: float = field(default_factory=time.time)
     io_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
@@ -61,6 +63,8 @@ class SessionDiagnostics:
 
     session_id: str
     connection: ConnectionStatus
+    host: str
+    port: int
     keep_alive_pattern_hex: str
     keep_alive_active: bool
     last_activity_at: float
@@ -95,17 +99,28 @@ class SessionOrchestrator:
         self._poll_interval = max(0.05, float(poll_interval))
         self._output_timeout = max(0.1, float(output_timeout))
 
-    def start_session(self) -> SessionHandle:
+    def start_session(
+        self, *, host: Optional[str] = None, port: Optional[int] = None
+    ) -> SessionHandle:
         """Start a new PLC session and keep it active until explicitly stopped."""
-        client = self._manager._pool.acquire()  # type: ignore[attr-defined]
+        resolved_host, resolved_port = self._manager.resolve_endpoint(host, port)
+        client = self._manager.acquire_client(host=resolved_host, port=resolved_port)
         try:
             status = self._manager.start_session(client)
         except Exception:
-            self._manager._pool.release(client)  # type: ignore[attr-defined]
+            self._manager.release_client(client)
             raise
 
         session_id = uuid.uuid4().hex
-        handle = SessionHandle(session_id=session_id, client=client, status=status)
+        handle = SessionHandle(
+            session_id=session_id,
+            client=client,
+            status=status,
+            host=resolved_host,
+            port=resolved_port,
+        )
+        handle.status.host = resolved_host
+        handle.status.port = resolved_port
         self._refresh_status(handle)
         self._mark_activity(handle)
         with self._lock:
@@ -120,7 +135,7 @@ class SessionOrchestrator:
             status = self._manager.stop_session(handle.client)
             self._refresh_status(handle)
         finally:
-            self._manager._pool.release(handle.client)  # type: ignore[attr-defined]
+            self._manager.release_client(handle.client)
             with self._lock:
                 self._sessions.pop(session_id, None)
         handle.status.last_status = status
@@ -259,6 +274,8 @@ class SessionOrchestrator:
         return SessionDiagnostics(
             session_id=session_id,
             connection=handle.status,
+            host=handle.host,
+            port=handle.port,
             keep_alive_pattern_hex=keep_alive_pattern_hex,
             keep_alive_active=keep_alive_active,
             last_activity_at=handle.last_activity_at,

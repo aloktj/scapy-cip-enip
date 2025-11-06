@@ -14,6 +14,8 @@ export interface ConnectionStatus {
 export interface SessionResponse {
   session_id: string;
   connection: ConnectionStatus;
+  host: string;
+  port: number;
 }
 
 export interface AssemblyQueryParams {
@@ -60,6 +62,8 @@ export interface CommandResponse {
 export interface SessionDiagnosticsResponse {
   session_id: string;
   connection: ConnectionStatus;
+  host: string;
+  port: number;
   keep_alive_pattern_hex: string;
   keep_alive_active: boolean;
   last_activity: number;

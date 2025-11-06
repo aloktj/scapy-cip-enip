@@ -69,6 +69,8 @@ def test_session_diagnostics(dummy_client, build_manager):
     assert diagnostics.keep_alive_pattern_hex == expected_hex
     assert diagnostics.keep_alive_active is True
     assert diagnostics.connection.last_status.code == 0
+    assert diagnostics.host == handle.host
+    assert diagnostics.port == handle.port
 
     # Ensure activity timestamp updates after operations
     before = diagnostics.last_activity_at
@@ -76,6 +78,19 @@ def test_session_diagnostics(dummy_client, build_manager):
     orchestrator.get_status(handle.session_id)
     after = orchestrator.get_diagnostics(handle.session_id).last_activity_at
     assert after >= before
+
+
+def test_start_session_with_custom_endpoint(dummy_client, build_manager):
+    orchestrator = SessionOrchestrator(build_manager(dummy_client))
+
+    handle = orchestrator.start_session(host="192.0.2.10", port=502)
+
+    assert handle.host == "192.0.2.10"
+    assert handle.port == 502
+
+    connection = orchestrator.stop_session(handle.session_id)
+    assert connection.host == "192.0.2.10"
+    assert connection.port == 502
 
 
 def _build_runtime_configuration() -> DeviceConfiguration:

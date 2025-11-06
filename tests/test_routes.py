@@ -55,7 +55,8 @@ CIP_CONFIG_XML = """
 
 
 def test_routes_require_authentication(build_manager, dummy_client):
-    app = create_app(build_manager(dummy_client), auth_token=AUTH_TOKEN)
+    manager = build_manager(dummy_client)
+    app = create_app(manager, auth_token=AUTH_TOKEN)
     client = TestClient(app)
 
     response = client.post("/sessions")
@@ -63,19 +64,29 @@ def test_routes_require_authentication(build_manager, dummy_client):
 
     response = client.post("/sessions", headers=_auth_headers())
     assert response.status_code == 201
+    payload = response.json()
+    assert payload["host"] == "127.0.0.1"
+    assert payload["port"] == 44818
 
 
 def test_session_lifecycle_and_commands(build_manager, dummy_client, make_cip_response):
-    app = create_app(build_manager(dummy_client), auth_token=AUTH_TOKEN)
+    manager = build_manager(dummy_client)
+    app = create_app(manager, auth_token=AUTH_TOKEN)
     client = TestClient(app)
 
     start = client.post("/sessions", headers=_auth_headers())
     assert start.status_code == 201
-    session_id = start.json()["session_id"]
+    payload = start.json()
+    session_id = payload["session_id"]
+    assert payload["host"] == "127.0.0.1"
+    assert payload["port"] == 44818
 
     status = client.get(f"/sessions/{session_id}", headers=_auth_headers())
     assert status.status_code == 200
-    assert status.json()["connection"]["connected"] is True
+    status_payload = status.json()
+    assert status_payload["connection"]["connected"] is True
+    assert status_payload["host"] == "127.0.0.1"
+    assert status_payload["port"] == 44818
 
     read = client.get(
         f"/sessions/{session_id}/assemblies",
@@ -115,11 +126,15 @@ def test_session_lifecycle_and_commands(build_manager, dummy_client, make_cip_re
 
     stop = client.delete(f"/sessions/{session_id}", headers=_auth_headers())
     assert stop.status_code == 200
-    assert stop.json()["connection"]["connected"] is False
+    stop_payload = stop.json()
+    assert stop_payload["connection"]["connected"] is False
+    assert stop_payload["host"] == "127.0.0.1"
+    assert stop_payload["port"] == 44818
 
 
 def test_assembly_runtime_endpoints(build_manager, dummy_client, make_cip_response):
-    app = create_app(build_manager(dummy_client), auth_token=AUTH_TOKEN)
+    manager = build_manager(dummy_client)
+    app = create_app(manager, auth_token=AUTH_TOKEN)
     client = TestClient(app)
 
     upload = client.post(
@@ -132,6 +147,8 @@ def test_assembly_runtime_endpoints(build_manager, dummy_client, make_cip_respon
     start = client.post("/sessions", headers=_auth_headers())
     assert start.status_code == 201
     session_id = start.json()["session_id"]
+    assert start.json()["host"] == "127.0.0.1"
+    assert start.json()["port"] == 44818
 
     state = client.get(
         f"/sessions/{session_id}/assemblies/inputs", headers=_auth_headers()
@@ -160,10 +177,35 @@ def test_assembly_runtime_endpoints(build_manager, dummy_client, make_cip_respon
 
     stop = client.delete(f"/sessions/{session_id}", headers=_auth_headers())
     assert stop.status_code == 200
+    assert stop.json()["host"] == "127.0.0.1"
+    assert stop.json()["port"] == 44818
+
+
+def test_sessions_support_custom_host(build_manager, dummy_client):
+    manager = build_manager(dummy_client)
+    app = create_app(manager, auth_token=AUTH_TOKEN)
+    client = TestClient(app)
+
+    start = client.post(
+        "/sessions",
+        headers=_auth_headers(),
+        json={"host": "192.0.2.5", "port": 5000},
+    )
+    assert start.status_code == 201
+    payload = start.json()
+    assert payload["host"] == "192.0.2.5"
+    assert payload["port"] == 5000
+    assert manager.last_endpoint == ("192.0.2.5", 5000)
+
+    stop = client.delete(f"/sessions/{payload['session_id']}", headers=_auth_headers())
+    assert stop.status_code == 200
+    assert stop.json()["host"] == "192.0.2.5"
+    assert stop.json()["port"] == 5000
 
 
 def test_configuration_upload_and_listing(build_manager, dummy_client):
-    app = create_app(build_manager(dummy_client), auth_token=AUTH_TOKEN)
+    manager = build_manager(dummy_client)
+    app = create_app(manager, auth_token=AUTH_TOKEN)
     client = TestClient(app)
 
     upload = client.post(
@@ -184,7 +226,8 @@ def test_configuration_upload_and_listing(build_manager, dummy_client):
 
 
 def test_configuration_validation_errors(build_manager, dummy_client):
-    app = create_app(build_manager(dummy_client), auth_token=AUTH_TOKEN)
+    manager = build_manager(dummy_client)
+    app = create_app(manager, auth_token=AUTH_TOKEN)
     client = TestClient(app)
 
     invalid_xml = "<Device><Assemblies><Assembly alias=\"bad\"></Assembly></Assemblies>"

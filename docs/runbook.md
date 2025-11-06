@@ -64,6 +64,11 @@ this header as part of its API client configuration.
   and reuse the returned `session_id` for reads/writes. The orchestrator keeps
   connections alive with an ENIP UDP pattern that can be inspected through
   `GET /sessions/{id}/diagnostics`.
+* **Target alternate PLCs** – Provide `host` and/or `port` in the `POST /sessions`
+  payload to override the default endpoint for a single session. The backend will
+  establish or reuse a connection pool for that address so operators can bounce
+  between benches without restarting the service. The Vite console persists the
+  last-used host/port in the browser to speed up subsequent runs.
 * **Assembly configuration** – The `services.assembly_config` helpers can be
   executed offline by enabling the fixtures described in the README. The
   repository’s unit tests demonstrate how to mock PLC responses when performing

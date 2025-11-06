@@ -13,7 +13,7 @@ import time
 from collections import deque
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Deque, Iterator, Optional, Tuple
+from typing import Deque, Dict, Iterator, Optional, Tuple
 
 from scapy.error import Scapy_Exception
 
@@ -80,6 +80,8 @@ class ConnectionStatus:
     enip_connid: int
     sequence: int
     last_status: CIPStatus = field(default_factory=CIPStatus)
+    host: str = ""
+    port: int = 0
 
 
 @dataclass
@@ -105,6 +107,7 @@ class PLCConnectionPool:
     def __init__(self, plc_addr: str, plc_port: int = 44818, max_size: int = 2):
         self._plc_addr = plc_addr
         self._plc_port = plc_port
+        self._key: Tuple[str, int] = (plc_addr, plc_port)
         self._max_size = max(1, max_size)
         self._clients: Deque[PLCClient] = deque()
         self._created = 0
@@ -118,7 +121,7 @@ class PLCConnectionPool:
                 raise PLCConnectionError("PLC connection pool exhausted")
             client = self._create_client()
             logger.debug("Created new PLCClient for pool")
-        return client
+        return self._attach_metadata(client)
 
     def release(self, client: PLCClient) -> None:
         if len(self._clients) < self._max_size:
@@ -135,6 +138,12 @@ class PLCConnectionPool:
         self._created += 1
         if not client.connected:
             raise PLCConnectionError("PLCClient failed to establish TCP connection")
+        return self._attach_metadata(client)
+
+    def _attach_metadata(self, client: PLCClient) -> PLCClient:
+        setattr(client, "_pool_key", self._key)
+        setattr(client, "_plc_addr", self._plc_addr)
+        setattr(client, "_plc_port", self._plc_port)
         return client
 
 
@@ -142,20 +151,71 @@ class PLCManager:
     """Context managed access to a PLC with connection pooling."""
 
     def __init__(self, plc_addr: str, plc_port: int = 44818, pool_size: int = 2):
-        self._pool = PLCConnectionPool(plc_addr, plc_port, pool_size)
+        self._default_addr = plc_addr
+        self._default_port = plc_port
+        self._pool_size = pool_size
+        self._pools: Dict[Tuple[str, int], PLCConnectionPool] = {}
+        self._pools[(plc_addr, plc_port)] = PLCConnectionPool(plc_addr, plc_port, pool_size)
+
+    @property
+    def default_host(self) -> str:
+        return self._default_addr
+
+    @property
+    def default_port(self) -> int:
+        return self._default_port
+
+    def resolve_endpoint(
+        self, host: Optional[str] = None, port: Optional[int] = None
+    ) -> Tuple[str, int]:
+        resolved_host = host or self._default_addr
+        resolved_port = self._default_port if port is None else int(port)
+        return resolved_host, resolved_port
+
+    def _get_pool(self, host: str, port: int) -> PLCConnectionPool:
+        key = (host, port)
+        pool = self._pools.get(key)
+        if pool is None:
+            logger.debug("Creating PLC connection pool for %s:%s", host, port)
+            pool = PLCConnectionPool(host, port, self._pool_size)
+            self._pools[key] = pool
+        return pool
+
+    def acquire_client(self, host: Optional[str] = None, port: Optional[int] = None) -> PLCClient:
+        resolved_host, resolved_port = self.resolve_endpoint(host, port)
+        pool = self._get_pool(resolved_host, resolved_port)
+        return pool.acquire()
+
+    def release_client(self, client: PLCClient) -> None:
+        pool_key = getattr(client, "_pool_key", None)
+        pool = self._pools.get(pool_key)
+        if pool is None:
+            logger.debug("Discarding PLCClient without a matching pool: %r", pool_key)
+            return
+        pool.release(client)
 
     @contextmanager
-    def session(self, auto_start: bool = True) -> Iterator[Tuple[PLCClient, ConnectionStatus]]:
-        client = self._pool.acquire()
+    def session(
+        self,
+        auto_start: bool = True,
+        *,
+        host: Optional[str] = None,
+        port: Optional[int] = None,
+    ) -> Iterator[Tuple[PLCClient, ConnectionStatus]]:
+        client = self.acquire_client(host=host, port=port)
+        endpoint_host = getattr(client, "_plc_addr", self._default_addr)
+        endpoint_port = getattr(client, "_plc_port", self._default_port)
         status = ConnectionStatus(
             connected=client.connected,
             session_id=getattr(client, "session_id", 0),
             enip_connid=getattr(client, "enip_connid", 0),
             sequence=getattr(client, "sequence", 0),
             last_status=CIPStatus(),
+            host=endpoint_host,
+            port=endpoint_port,
         )
         if not client.connected:
-            self._pool.release(client)
+            self.release_client(client)
             raise PLCConnectionError("PLCClient is not connected")
 
         try:
@@ -171,16 +231,20 @@ class PLCManager:
                 if auto_start and client.connected:
                     self.stop_session(client)
             finally:
-                self._pool.release(client)
+                self.release_client(client)
 
     def start_session(self, client: PLCClient) -> ConnectionStatus:
         status = self._forward_open(client)
+        endpoint_host = getattr(client, "_plc_addr", self._default_addr)
+        endpoint_port = getattr(client, "_plc_port", self._default_port)
         return ConnectionStatus(
             connected=client.connected,
             session_id=getattr(client, "session_id", 0),
             enip_connid=getattr(client, "enip_connid", 0),
             sequence=getattr(client, "sequence", 0),
             last_status=status,
+            host=endpoint_host,
+            port=endpoint_port,
         )
 
     def stop_session(self, client: PLCClient) -> CIPStatus:

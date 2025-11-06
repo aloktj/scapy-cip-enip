@@ -1,7 +1,7 @@
 """FastAPI routes for PLC orchestration and configuration management."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
 
 from cip import CIP_Path
 from services.config_loader import (
@@ -37,6 +37,7 @@ from .schemas import (
     ConfigurationValidationResponse,
     SessionDiagnosticsResponse,
     SessionResponse,
+    SessionStartRequest,
 )
 
 api_router = APIRouter()
@@ -53,10 +54,14 @@ config_router = APIRouter(
 @sessions_router.post("", response_model=SessionResponse, status_code=status.HTTP_201_CREATED)
 def start_session(
     request: Request,
+    payload: SessionStartRequest | None = Body(default=None),
     orchestrator: SessionOrchestrator = Depends(get_orchestrator),
 ) -> SessionResponse:
     try:
-        handle = orchestrator.start_session()
+        handle = orchestrator.start_session(
+            host=payload.host if payload else None,
+            port=payload.port if payload else None,
+        )
     except PLCConnectionError as exc:
         request.state.enip_error = str(exc)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc

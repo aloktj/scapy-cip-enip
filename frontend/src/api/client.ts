@@ -69,8 +69,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  startSession(): Promise<SessionResponse> {
-    return request<SessionResponse>("/sessions", { method: "POST" });
+  startSession(host?: string, port?: number): Promise<SessionResponse> {
+    const payload: { host?: string; port?: number } = {};
+    const trimmedHost = host?.trim();
+    if (trimmedHost) {
+      payload.host = trimmedHost;
+    }
+    if (typeof port === "number" && Number.isFinite(port)) {
+      payload.port = Math.trunc(port);
+    }
+    return request<SessionResponse>("/sessions", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
   },
 
   stopSession(sessionId: string): Promise<SessionResponse> {

@@ -27,6 +27,8 @@ import { resolveStatusMessage } from "./statusMessages";
 import "./App.css";
 
 const DIAGNOSTICS_INTERVAL_MS = 4000;
+const LAST_SESSION_HOST_KEY = "scapy-cip-enip:last-session-host";
+const LAST_SESSION_PORT_KEY = "scapy-cip-enip:last-session-port";
 
 export default function App() {
   const [session, setSession] = useState<SessionResponse | null>(null);
@@ -40,6 +42,18 @@ export default function App() {
   const [configSuccess, setConfigSuccess] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [sessionHost, setSessionHost] = useState<string>(() => {
+    if (typeof window === "undefined") {
+      return "";
+    }
+    return window.localStorage.getItem(LAST_SESSION_HOST_KEY) ?? "";
+  });
+  const [sessionPort, setSessionPort] = useState<string>(() => {
+    if (typeof window === "undefined") {
+      return "";
+    }
+    return window.localStorage.getItem(LAST_SESSION_PORT_KEY) ?? "";
+  });
 
   const activeStatus = useMemo(() => diagnostics?.connection.last_status ?? session?.connection.last_status, [
     diagnostics,
@@ -76,6 +90,28 @@ export default function App() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    if (sessionHost) {
+      window.localStorage.setItem(LAST_SESSION_HOST_KEY, sessionHost);
+    } else {
+      window.localStorage.removeItem(LAST_SESSION_HOST_KEY);
+    }
+  }, [sessionHost]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    if (sessionPort) {
+      window.localStorage.setItem(LAST_SESSION_PORT_KEY, sessionPort);
+    } else {
+      window.localStorage.removeItem(LAST_SESSION_PORT_KEY);
+    }
+  }, [sessionPort]);
 
   useEffect(() => {
     if (!session) {
@@ -123,14 +159,19 @@ export default function App() {
     setGlobalError(null);
     setDiagnostics(null);
     try {
-      const newSession = await api.startSession();
+      const trimmedHost = sessionHost.trim();
+      const parsedPort = Number.parseInt(sessionPort, 10);
+      const sanitizedPort = Number.isInteger(parsedPort) && parsedPort > 0 ? parsedPort : undefined;
+      const newSession = await api.startSession(trimmedHost || undefined, sanitizedPort);
       setSession(newSession);
+      setSessionHost(newSession.host);
+      setSessionPort(newSession.port.toString());
     } catch (error) {
       setGlobalError(formatApiError(error));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [sessionHost, sessionPort]);
 
   const handleStop = useCallback(async () => {
     if (!session) {
@@ -141,6 +182,8 @@ export default function App() {
     try {
       const stopped = await api.stopSession(session.session_id);
       setSession(stopped);
+      setSessionHost(stopped.host);
+      setSessionPort(stopped.port.toString());
       setDiagnostics(null);
     } catch (error) {
       setGlobalError(formatApiError(error));
@@ -158,6 +201,14 @@ export default function App() {
     },
     [session]
   );
+
+  const handleHostChange = useCallback((value: string) => {
+    setSessionHost(value);
+  }, []);
+
+  const handlePortChange = useCallback((value: string) => {
+    setSessionPort(value);
+  }, []);
 
   const handleWrite = useCallback(
     async (path: string, payload: AssemblyWritePayload): Promise<void> => {
@@ -273,7 +324,11 @@ export default function App() {
         <SessionDashboard
           session={session}
           diagnostics={diagnostics}
+          host={sessionHost}
+          port={sessionPort}
           loading={loading}
+          onHostChange={handleHostChange}
+          onPortChange={handlePortChange}
           onStart={() => {
             void handleStart();
           }}
