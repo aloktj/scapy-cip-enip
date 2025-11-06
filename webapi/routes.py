@@ -19,6 +19,7 @@ from .schemas import (
     CIPStatusSchema,
     CommandRequest,
     CommandResponse,
+    SessionDiagnosticsResponse,
     SessionResponse,
 )
 
@@ -62,6 +63,34 @@ def stop_session(
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
     request.state.cip_status = connection.last_status
     return SessionResponse.from_handle(session_id, connection)
+
+
+@api_router.get("/{session_id}", response_model=SessionResponse)
+def get_session(
+    session_id: str,
+    request: Request,
+    orchestrator: SessionOrchestrator = Depends(get_orchestrator),
+) -> SessionResponse:
+    try:
+        status = orchestrator.get_status(session_id)
+    except PLCManagerError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    request.state.cip_status = status.last_status
+    return SessionResponse.from_handle(session_id, status)
+
+
+@api_router.get("/{session_id}/diagnostics", response_model=SessionDiagnosticsResponse)
+def session_diagnostics(
+    session_id: str,
+    request: Request,
+    orchestrator: SessionOrchestrator = Depends(get_orchestrator),
+) -> SessionDiagnosticsResponse:
+    try:
+        report = orchestrator.get_diagnostics(session_id)
+    except PLCManagerError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    request.state.cip_status = report.connection.last_status
+    return SessionDiagnosticsResponse.from_report(report)
 
 
 @api_router.get("/{session_id}/assemblies", response_model=AssemblyReadResponse)

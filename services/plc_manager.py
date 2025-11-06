@@ -78,6 +78,7 @@ class ConnectionStatus:
     connected: bool
     session_id: int
     enip_connid: int
+    sequence: int
     last_status: CIPStatus = field(default_factory=CIPStatus)
 
 
@@ -150,6 +151,7 @@ class PLCManager:
             connected=client.connected,
             session_id=getattr(client, "session_id", 0),
             enip_connid=getattr(client, "enip_connid", 0),
+            sequence=getattr(client, "sequence", 0),
             last_status=CIPStatus(),
         )
         if not client.connected:
@@ -177,6 +179,7 @@ class PLCManager:
             connected=client.connected,
             session_id=getattr(client, "session_id", 0),
             enip_connid=getattr(client, "enip_connid", 0),
+            sequence=getattr(client, "sequence", 0),
             last_status=status,
         )
 
