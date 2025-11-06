@@ -30,6 +30,7 @@ def create_app(
     title: str = "CIP/ENIP Web API",
     auth_token: str | None = None,
     configuration_store: ConfigurationStore | None = None,
+    static_root: Path | None = None,
 ) -> FastAPI:
     """Create and configure a FastAPI application bound to a :class:`PLCManager`."""
     app = FastAPI(title=title)
@@ -43,9 +44,16 @@ def create_app(
     app.include_router(api_router)
     app.add_middleware(CIPLoggingMiddleware)
 
-    static_root = Path(__file__).resolve().parent.parent / "frontend" / "dist"
-    if static_root.exists():
-        app.mount("/ui", StaticFiles(directory=str(static_root), html=True), name="ui")
+    dist_root = static_root or Path(__file__).resolve().parent.parent / "frontend" / "dist"
+    if dist_root.exists():
+        app.mount("/ui", StaticFiles(directory=str(dist_root), html=True), name="ui")
+        assets_root = dist_root / "assets"
+        if assets_root.exists():
+            app.mount(
+                "/assets",
+                StaticFiles(directory=str(assets_root), html=False),
+                name="ui-assets",
+            )
 
     logger.debug("Web API application created with PLCManager %s", plc_manager)
 
