@@ -132,6 +132,30 @@ def test_session_lifecycle_and_commands(build_manager, dummy_client, make_cip_re
     assert stop_payload["port"] == 44818
 
 
+def test_frontend_assets_served(build_manager, dummy_client, tmp_path):
+    manager = build_manager(dummy_client)
+    dist_root = tmp_path / "dist"
+    assets_root = dist_root / "assets"
+    assets_root.mkdir(parents=True)
+
+    index_path = dist_root / "index.html"
+    index_path.write_text("<html><head></head><body><script src=\"/assets/app.js\"></script></body></html>")
+
+    asset_path = assets_root / "app.js"
+    asset_path.write_text("console.log('ok');")
+
+    app = create_app(manager, auth_token=AUTH_TOKEN, static_root=dist_root)
+    client = TestClient(app)
+
+    response = client.get("/ui/")
+    assert response.status_code == 200
+    assert "app.js" in response.text
+
+    asset_response = client.get("/assets/app.js")
+    assert asset_response.status_code == 200
+    assert "console.log" in asset_response.text
+
+
 def test_assembly_runtime_endpoints(build_manager, dummy_client, make_cip_response):
     manager = build_manager(dummy_client)
     app = create_app(manager, auth_token=AUTH_TOKEN)
