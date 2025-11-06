@@ -2,9 +2,12 @@ import type {
   ApiErrorShape,
   AssemblyQueryParams,
   AssemblyReadResponse,
+  AssemblyRuntimeResponse,
   AssemblyWritePayload,
+  CIPStatus,
   CommandRequestPayload,
   CommandResponse,
+  ConfigurationStatus,
   SessionDiagnosticsResponse,
   SessionResponse
 } from "./types";
@@ -113,5 +116,29 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload)
     });
+  },
+
+  getAssemblyRuntime(sessionId: string, alias: string): Promise<AssemblyRuntimeResponse> {
+    return request<AssemblyRuntimeResponse>(
+      `/sessions/${sessionId}/assemblies/${encodeURIComponent(alias)}`
+    );
+  },
+
+  writeAssemblyData(sessionId: string, alias: string, payloadHex: string): Promise<CIPStatus> {
+    return request<CIPStatus>(`/sessions/${sessionId}/assemblies/${encodeURIComponent(alias)}`, {
+      method: "PUT",
+      body: JSON.stringify({ payload_hex: payloadHex })
+    });
+  },
+
+  uploadConfiguration(xml: string): Promise<ConfigurationStatus> {
+    return request<ConfigurationStatus>("/config", {
+      method: "POST",
+      body: JSON.stringify({ xml })
+    });
+  },
+
+  getConfiguration(): Promise<ConfigurationStatus> {
+    return request<ConfigurationStatus>("/config");
   }
 };
