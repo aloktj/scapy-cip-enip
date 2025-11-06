@@ -10,6 +10,11 @@ from services.config_loader import (
     load_configuration,
 )
 from services.config_store import ConfigurationStore
+from services.io_runtime import (
+    AssemblyDirectionError,
+    AssemblyNotRegisteredError,
+    AssemblyRuntimeError,
+)
 from services.plc_manager import (
     PLCConnectionError,
     PLCManagerError,
@@ -21,7 +26,9 @@ from .orchestrator import CommandResult, SessionOrchestrator
 from .schemas import (
     AssemblyQuery,
     AssemblyReadResponse,
+    AssemblyRuntimeResponse,
     AssemblyWriteRequest,
+    AssemblyDataWriteRequest,
     CIPStatusSchema,
     CommandRequest,
     CommandResponse,
@@ -166,6 +173,54 @@ def update_assembly(
     return CIPStatusSchema.from_status(status_obj)
 
 
+@sessions_router.get(
+    "/{session_id}/assemblies/{alias}", response_model=AssemblyRuntimeResponse
+)
+def get_assembly_state(
+    session_id: str,
+    alias: str,
+    request: Request,
+    orchestrator: SessionOrchestrator = Depends(get_orchestrator),
+) -> AssemblyRuntimeResponse:
+    try:
+        view = orchestrator.get_assembly_state(session_id, alias)
+    except PLCManagerError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except AssemblyNotRegisteredError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except AssemblyRuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    request.state.cip_status = view.status
+    return AssemblyRuntimeResponse.from_view(view)
+
+
+@sessions_router.put(
+    "/{session_id}/assemblies/{alias}", response_model=CIPStatusSchema
+)
+def write_assembly(
+    session_id: str,
+    alias: str,
+    payload: AssemblyDataWriteRequest,
+    request: Request,
+    orchestrator: SessionOrchestrator = Depends(get_orchestrator),
+) -> CIPStatusSchema:
+    try:
+        status_obj = orchestrator.write_assembly(session_id, alias, payload.value_bytes())
+    except AssemblyNotRegisteredError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except AssemblyDirectionError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except PLCResponseError as exc:
+        request.state.cip_status = exc.status
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    except PLCManagerError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    except AssemblyRuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    request.state.cip_status = status_obj
+    return CIPStatusSchema.from_status(status_obj)
+
+
 @sessions_router.post("/{session_id}/commands", response_model=CommandResponse)
 def execute_command(
     session_id: str,
@@ -197,6 +252,7 @@ def execute_command(
 def upload_configuration(
     payload: ConfigurationUploadRequest,
     store: ConfigurationStore = Depends(get_config_store),
+    orchestrator: SessionOrchestrator = Depends(get_orchestrator),
 ) -> ConfigurationStatusSchema:
     try:
         configuration = load_configuration(payload.xml)
@@ -206,6 +262,7 @@ def upload_configuration(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
     state = store.load(configuration)
+    orchestrator.apply_configuration(configuration)
     return ConfigurationStatusSchema.from_state(state)
 
 

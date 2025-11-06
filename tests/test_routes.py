@@ -88,6 +88,50 @@ def test_session_lifecycle_and_commands(build_manager, dummy_client, make_cip_re
     assert stop.json()["connection"]["connected"] is False
 
 
+def test_assembly_runtime_endpoints(build_manager, dummy_client, make_cip_response):
+    app = create_app(build_manager(dummy_client), auth_token=AUTH_TOKEN)
+    client = TestClient(app)
+
+    upload = client.post(
+        "/config",
+        headers=_auth_headers(),
+        json={"xml": CONFIG_XML},
+    )
+    assert upload.status_code == 201
+
+    start = client.post("/sessions", headers=_auth_headers())
+    assert start.status_code == 201
+    session_id = start.json()["session_id"]
+
+    state = client.get(
+        f"/sessions/{session_id}/assemblies/inputs", headers=_auth_headers()
+    )
+    assert state.status_code == 200
+    payload = state.json()
+    assert payload["alias"] == "inputs"
+    assert payload["status"]["code"] == 0
+
+    dummy_client.queue_response(make_cip_response(status=0))
+    write = client.put(
+        f"/sessions/{session_id}/assemblies/outputs",
+        headers=_auth_headers(),
+        json={"payload_hex": "0011223344556677"},
+    )
+    assert write.status_code == 200
+    assert write.json()["code"] == 0
+    assert dummy_client.sent[-1][0] == "unit"
+
+    forbidden = client.put(
+        f"/sessions/{session_id}/assemblies/inputs",
+        headers=_auth_headers(),
+        json={"payload_hex": "0000"},
+    )
+    assert forbidden.status_code == 400
+
+    stop = client.delete(f"/sessions/{session_id}", headers=_auth_headers())
+    assert stop.status_code == 200
+
+
 def test_configuration_upload_and_listing(build_manager, dummy_client):
     app = create_app(build_manager(dummy_client), auth_token=AUTH_TOKEN)
     client = TestClient(app)
