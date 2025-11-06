@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, List, Tuple
+from typing import Callable, List, Optional, Tuple
 
 import sys
 
@@ -68,20 +68,54 @@ class DummyPool:
 class DummyManager:
     """Utility PLC manager with deterministic behaviour for tests."""
 
-    def __init__(self, client: DummyClient, read_payload: bytes = b"\x01\x02") -> None:
+    def __init__(
+        self,
+        client: DummyClient,
+        read_payload: bytes = b"\x01\x02",
+        *,
+        host: str = "127.0.0.1",
+        port: int = 44818,
+    ) -> None:
         self._pool = DummyPool(client)
         self._read_payload = read_payload
         self.start_calls = 0
+        self._default_host = host
+        self._default_port = port
+        self.last_endpoint: Optional[Tuple[str, int]] = None
+
+    def resolve_endpoint(
+        self, host: Optional[str] = None, port: Optional[int] = None
+    ) -> Tuple[str, int]:
+        resolved_host = host or self._default_host
+        resolved_port = self._default_port if port is None else port
+        return resolved_host, resolved_port
+
+    def acquire_client(
+        self, host: Optional[str] = None, port: Optional[int] = None
+    ) -> DummyClient:
+        resolved_host, resolved_port = self.resolve_endpoint(host, port)
+        self.last_endpoint = (resolved_host, resolved_port)
+        client = self._pool.acquire()
+        setattr(client, "_plc_addr", resolved_host)
+        setattr(client, "_plc_port", resolved_port)
+        return client
+
+    def release_client(self, client: DummyClient) -> None:
+        self._pool.release(client)
 
     def start_session(self, client: DummyClient) -> ConnectionStatus:
         self.start_calls += 1
         status = CIPStatus.from_code(0)
+        endpoint_host = getattr(client, "_plc_addr", self._default_host)
+        endpoint_port = getattr(client, "_plc_port", self._default_port)
         return ConnectionStatus(
             connected=client.connected,
             session_id=client.session_id,
             enip_connid=client.enip_connid,
             sequence=self.start_calls,
             last_status=status,
+            host=endpoint_host,
+            port=endpoint_port,
         )
 
     def stop_session(self, client: DummyClient) -> CIPStatus:
@@ -99,9 +133,15 @@ def dummy_client() -> DummyClient:
 
 
 @pytest.fixture()
-def build_manager() -> Callable[[DummyClient, bytes], DummyManager]:
-    def factory(client: DummyClient, read_payload: bytes = b"\x01\x02") -> DummyManager:
-        return DummyManager(client, read_payload=read_payload)
+def build_manager() -> Callable[..., DummyManager]:
+    def factory(
+        client: DummyClient,
+        read_payload: bytes = b"\x01\x02",
+        *,
+        host: str = "127.0.0.1",
+        port: int = 44818,
+    ) -> DummyManager:
+        return DummyManager(client, read_payload=read_payload, host=host, port=port)
 
     return factory
 

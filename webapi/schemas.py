@@ -35,6 +35,7 @@ __all__ = [
     "ConnectionStatusSchema",
     "SessionDiagnosticsResponse",
     "SessionResponse",
+    "SessionStartRequest",
 ]
 
 
@@ -65,18 +66,50 @@ class ConnectionStatusSchema(BaseModel):
         )
 
 
+class SessionStartRequest(BaseModel):
+    host: Optional[str] = Field(
+        None,
+        description="Override the default PLC hostname or IP for the new session.",
+        min_length=1,
+    )
+    port: Optional[conint(gt=0, lt=65536)] = Field(
+        None, description="Override the default PLC TCP port for the new session."
+    )
+
+    @field_validator("host")
+    @classmethod
+    def normalize_host(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
+
+
 class SessionResponse(BaseModel):
     session_id: str
     connection: ConnectionStatusSchema
+    host: str
+    port: int
 
     @classmethod
     def from_handle(cls, session_id: str, status: ConnectionStatus) -> "SessionResponse":
-        return cls(session_id=session_id, connection=ConnectionStatusSchema.from_status(status))
+        host = getattr(status, "host", None)
+        port = getattr(status, "port", None)
+        if host is None or port is None:
+            raise ValueError("Session status is missing PLC endpoint metadata")
+        return cls(
+            session_id=session_id,
+            connection=ConnectionStatusSchema.from_status(status),
+            host=host,
+            port=port,
+        )
 
 
 class SessionDiagnosticsResponse(BaseModel):
     session_id: str
     connection: ConnectionStatusSchema
+    host: str
+    port: int
     keep_alive_pattern_hex: str
     keep_alive_active: bool
     last_activity: float
@@ -86,6 +119,8 @@ class SessionDiagnosticsResponse(BaseModel):
         return cls(
             session_id=report.session_id,
             connection=ConnectionStatusSchema.from_status(report.connection),
+            host=report.host,
+            port=report.port,
             keep_alive_pattern_hex=report.keep_alive_pattern_hex,
             keep_alive_active=report.keep_alive_active,
             last_activity=report.last_activity_at,
