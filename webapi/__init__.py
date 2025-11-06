@@ -8,9 +8,14 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from services.config_store import ConfigurationStore
 from services.plc_manager import PLCManager
 
-from .dependencies import configure_authenticator, configure_orchestrator
+from .dependencies import (
+    configure_authenticator,
+    configure_config_store,
+    configure_orchestrator,
+)
 from .middleware import CIPLoggingMiddleware
 from .orchestrator import SessionOrchestrator
 from .routes import api_router
@@ -23,6 +28,7 @@ def create_app(
     *,
     title: str = "CIP/ENIP Web API",
     auth_token: str | None = None,
+    configuration_store: ConfigurationStore | None = None,
 ) -> FastAPI:
     """Create and configure a FastAPI application bound to a :class:`PLCManager`."""
     app = FastAPI(title=title)
@@ -30,6 +36,7 @@ def create_app(
     orchestrator = SessionOrchestrator(plc_manager)
     configure_orchestrator(orchestrator)
     configure_authenticator(auth_token or os.getenv("PLC_API_TOKEN"))
+    configure_config_store(configuration_store or ConfigurationStore())
 
     app.include_router(api_router)
     app.add_middleware(CIPLoggingMiddleware)

@@ -7,12 +7,16 @@ from typing import Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from services.config_store import ConfigurationStore
+
 from .orchestrator import SessionOrchestrator
 
 __all__ = [
     "TokenAuthenticator",
     "configure_authenticator",
+    "configure_config_store",
     "configure_orchestrator",
+    "get_config_store",
     "get_orchestrator",
     "require_token",
 ]
@@ -35,6 +39,7 @@ class TokenAuthenticator:
 _SECURITY_SCHEME = HTTPBearer(auto_error=False)
 _ORCHESTRATOR: Optional[SessionOrchestrator] = None
 _AUTHENTICATOR: Optional[TokenAuthenticator] = None
+_CONFIG_STORE: Optional[ConfigurationStore] = None
 
 
 def configure_orchestrator(orchestrator: SessionOrchestrator) -> None:
@@ -53,11 +58,26 @@ def configure_authenticator(token: Optional[str]) -> None:
         _AUTHENTICATOR = None
 
 
+def configure_config_store(store: ConfigurationStore) -> None:
+    """Register the configuration store used by the API dependencies."""
+
+    global _CONFIG_STORE
+    _CONFIG_STORE = store
+
+
 def get_orchestrator() -> SessionOrchestrator:
     """Retrieve the configured orchestrator instance."""
     if _ORCHESTRATOR is None:
         raise RuntimeError("Session orchestrator has not been configured")
     return _ORCHESTRATOR
+
+
+def get_config_store() -> ConfigurationStore:
+    """Retrieve the configured :class:`ConfigurationStore`."""
+
+    if _CONFIG_STORE is None:
+        raise RuntimeError("Configuration store has not been configured")
+    return _CONFIG_STORE
 
 
 def require_token(
