@@ -17,7 +17,7 @@ import type {
   SessionDiagnosticsResponse,
   SessionResponse
 } from "./api/types";
-import { api, ApiError } from "./api/client";
+import { api, ApiError, setAuthToken } from "./api/client";
 import { formatApiError } from "./api/errors";
 import { SessionDashboard } from "./components/SessionDashboard";
 import { AssemblyEditor } from "./components/AssemblyEditor";
@@ -29,6 +29,7 @@ import "./App.css";
 const DIAGNOSTICS_INTERVAL_MS = 4000;
 const LAST_SESSION_HOST_KEY = "scapy-cip-enip:last-session-host";
 const LAST_SESSION_PORT_KEY = "scapy-cip-enip:last-session-port";
+const API_TOKEN_KEY = "scapy-cip-enip:api-token";
 
 export default function App() {
   const [session, setSession] = useState<SessionResponse | null>(null);
@@ -42,6 +43,14 @@ export default function App() {
   const [configSuccess, setConfigSuccess] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [apiToken, setApiToken] = useState<string>(() => {
+    if (typeof window === "undefined") {
+      return "";
+    }
+    return window.localStorage.getItem(API_TOKEN_KEY)?.trim() ?? "";
+  });
+  const [tokenDraft, setTokenDraft] = useState<string>(apiToken);
+  const [tokenFeedback, setTokenFeedback] = useState<string | null>(null);
   const [sessionHost, setSessionHost] = useState<string>(() => {
     if (typeof window === "undefined") {
       return "";
@@ -61,11 +70,24 @@ export default function App() {
   ]);
 
   useEffect(() => {
+    setAuthToken(apiToken);
+    if (typeof window === "undefined") {
+      return;
+    }
+    if (apiToken) {
+      window.localStorage.setItem(API_TOKEN_KEY, apiToken);
+    } else {
+      window.localStorage.removeItem(API_TOKEN_KEY);
+    }
+  }, [apiToken]);
+
+  useEffect(() => {
     let cancelled = false;
 
     const loadConfiguration = async () => {
       setConfigLoading(true);
       setConfigError(null);
+      setConfigSuccess(null);
       try {
         const status = await api.getConfiguration();
         if (cancelled) {
@@ -76,7 +98,16 @@ export default function App() {
         if (cancelled) {
           return;
         }
-        setConfigError(formatApiError(error));
+        if (error instanceof ApiError && error.status === 401) {
+          setConfiguration(null);
+          setConfigError(
+            apiToken
+              ? "Authorization failed. Verify the bearer token saved below matches PLC_API_TOKEN."
+              : "Provide the API bearer token below before managing the configuration."
+          );
+        } else {
+          setConfigError(formatApiError(error));
+        }
       } finally {
         if (!cancelled) {
           setConfigLoading(false);
@@ -89,7 +120,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [apiToken]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -252,14 +283,42 @@ export default function App() {
           );
         })
         .catch((error) => {
-          setConfigError(formatApiError(error));
+          if (error instanceof ApiError && error.status === 401) {
+            setConfigError(
+              apiToken
+                ? "Authorization failed. Verify the bearer token saved below matches PLC_API_TOKEN."
+                : "Provide the API bearer token below before managing the configuration."
+            );
+          } else {
+            setConfigError(formatApiError(error));
+          }
         })
         .finally(() => {
           setConfigLoading(false);
         });
     },
-    []
+    [apiToken]
   );
+
+  const handleTokenDraftChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    setTokenDraft(event.target.value);
+    setTokenFeedback(null);
+  }, []);
+
+  const handleTokenSave = useCallback(() => {
+    const trimmed = tokenDraft.trim();
+    setApiToken(trimmed);
+    setTokenDraft(trimmed);
+    setTokenFeedback(trimmed ? "Bearer token saved for API requests." : "Cleared saved bearer token.");
+  }, [tokenDraft]);
+
+  const handleTokenClear = useCallback(() => {
+    setTokenDraft("");
+    setApiToken("");
+    setTokenFeedback("Cleared saved bearer token.");
+  }, []);
+
+  const tokenSaveDisabled = useMemo(() => tokenDraft.trim() === apiToken, [apiToken, tokenDraft]);
 
   const handleFileInput = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
@@ -375,6 +434,37 @@ export default function App() {
             hidden
             onChange={handleFileInput}
           />
+        </div>
+        <div className="field-group" style={{ marginTop: "1rem" }}>
+          <label htmlFor="api-token">API bearer token</label>
+          <div className="token-controls">
+            <input
+              id="api-token"
+              type="password"
+              className="token-input"
+              placeholder="Paste the PLC_API_TOKEN value"
+              value={tokenDraft}
+              onChange={handleTokenDraftChange}
+              autoComplete="off"
+            />
+            <button type="button" onClick={handleTokenSave} disabled={tokenSaveDisabled}>
+              Save token
+            </button>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={handleTokenClear}
+              disabled={!apiToken && !tokenDraft}
+            >
+              Clear
+            </button>
+          </div>
+          <p className="muted-text">
+            This value is stored locally in your browser and sent with all API requests.
+          </p>
+          {tokenFeedback && (
+            <p className="success-text" style={{ marginTop: "0.5rem" }}>{tokenFeedback}</p>
+          )}
         </div>
         {configError && <p className="error-text" style={{ marginTop: "0.75rem" }}>{configError}</p>}
         {configSuccess && (

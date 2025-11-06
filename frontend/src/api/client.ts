@@ -38,13 +38,25 @@ async function parseJSON<T>(response: Response): Promise<T> {
   }
 }
 
+let authToken: string | null = null;
+
+export function setAuthToken(token: string | null | undefined): void {
+  const trimmed = token?.trim();
+  authToken = trimmed ? trimmed : null;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers ?? {});
+  if (!headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+  if (authToken && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${authToken}`);
+  }
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...init?.headers
-    },
-    ...init
+    ...init,
+    headers
   });
 
   if (!response.ok) {
