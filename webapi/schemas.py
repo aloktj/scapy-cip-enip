@@ -4,7 +4,7 @@ from __future__ import annotations
 import binascii
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field, conint, root_validator, validator
+from pydantic import BaseModel, Field, conint, field_validator, model_validator
 
 from cip import CIP_Path
 from services.plc_manager import AssemblySnapshot, CIPStatus, ConnectionStatus
@@ -86,18 +86,18 @@ class CIPPathModel(BaseModel):
     attribute_id: Optional[conint(ge=0)] = None
     symbolic: Optional[str] = Field(None, description="Symbolic path resolved via CIP_Path.make_str")
 
-    @root_validator
-    def validate_path(cls, values):
+    @model_validator(mode="after")
+    def validate_path(self) -> "CIPPathModel":
         provided = [
-            values.get("class_id"),
-            values.get("instance_id"),
-            values.get("member_id"),
-            values.get("attribute_id"),
-            values.get("symbolic"),
+            self.class_id,
+            self.instance_id,
+            self.member_id,
+            self.attribute_id,
+            self.symbolic,
         ]
         if not any(v is not None for v in provided):
             raise ValueError("At least one CIP path component must be provided")
-        return values
+        return self
 
     def to_cip_path(self) -> CIP_Path:
         if self.symbolic:
@@ -148,7 +148,8 @@ class AssemblyWriteRequest(BaseModel):
     value_hex: str = Field(..., description="Hex-encoded payload to write")
     path: Optional[CIPPathModel] = None
 
-    @validator("value_hex")
+    @field_validator("value_hex")
+    @classmethod
     def validate_hex(cls, value: str) -> str:
         try:
             if len(value) % 2:
@@ -168,7 +169,8 @@ class CommandRequest(BaseModel):
     payload_hex: Optional[str] = Field(None, description="Optional hex payload")
     transport: Literal["rr", "rr_cm", "rr_mr", "unit"] = "rr_cm"
 
-    @validator("payload_hex")
+    @field_validator("payload_hex")
+    @classmethod
     def validate_payload(cls, value: Optional[str]) -> Optional[str]:
         if value is None:
             return value
