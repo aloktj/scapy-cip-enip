@@ -24,6 +24,36 @@ CONFIG_XML = """
 """.strip()
 
 
+CIP_CONFIG_XML = """
+<cip>
+  <identity
+    name="CIP Enabled PLC"
+    vendorId="101"
+    productCode="202"
+    revisionMajor="2"
+    revisionMinor="1"
+    serialNumber="0xABCDEF"
+  />
+  <assemblies>
+    <assembly id="InputAlias" dir="in" instanceId="0x64" size="4">
+      <members>
+        <member name="Status">
+          <usint offset="0" />
+        </member>
+        <member name="Count">
+          <uint offset="1" />
+        </member>
+      </members>
+    </assembly>
+    <assembly id="OutputAlias" dir="out" instanceId="0x65">
+      <usint name="Command" offset="0" />
+      <string name="Label" offset="1" length="8">Descriptive label</string>
+    </assembly>
+  </assemblies>
+</cip>
+""".strip()
+
+
 def test_routes_require_authentication(build_manager, dummy_client):
     app = create_app(build_manager(dummy_client), auth_token=AUTH_TOKEN)
     client = TestClient(app)
@@ -192,3 +222,56 @@ def test_configuration_validation_errors(build_manager, dummy_client):
     )
     assert structural.status_code == 200
     assert structural.json()["valid"] is False
+
+
+def test_cip_configuration_support(build_manager, dummy_client):
+    app = create_app(build_manager(dummy_client), auth_token=AUTH_TOKEN)
+    client = TestClient(app)
+
+    upload = client.post(
+        "/config",
+        headers=_auth_headers(),
+        json={"xml": CIP_CONFIG_XML},
+    )
+    assert upload.status_code == 201
+    payload = upload.json()
+
+    assert payload["identity"]["name"] == "CIP Enabled PLC"
+    assert payload["identity"]["vendor"] == "101"
+    assert payload["identity"]["product_code"] == "202"
+    assert payload["identity"]["revision"] == "2.1"
+    assert payload["identity"]["serial_number"] == "0xABCDEF"
+
+    assert len(payload["assemblies"]) == 2
+
+    first = payload["assemblies"][0]
+    assert first["alias"] == "InputAlias"
+    assert first["class_id"] == 0x04
+    assert first["instance_id"] == 0x64
+    assert first["direction"] == "input"
+    assert first["size"] == 4
+    assert [member["name"] for member in first["members"]] == ["Status", "Count"]
+    assert first["members"][0]["datatype"] == "usint"
+    assert first["members"][0]["offset"] == 0
+    assert first["members"][0]["size"] == 1
+    assert first["members"][1]["datatype"] == "uint"
+    assert first["members"][1]["offset"] == 1
+    assert first["members"][1]["size"] == 2
+
+    second = payload["assemblies"][1]
+    assert second["alias"] == "OutputAlias"
+    assert second["direction"] == "output"
+    assert second["size"] is None
+    assert [member["name"] for member in second["members"]] == ["Command", "Label"]
+    assert second["members"][0]["size"] == 1
+    assert second["members"][1]["size"] == 8
+    assert second["members"][1]["description"] == "Descriptive label"
+
+    listing = client.get("/config", headers=_auth_headers())
+    assert listing.status_code == 200
+    catalog = listing.json()
+    assert catalog["loaded"] is True
+    assert [assembly["alias"] for assembly in catalog["assemblies"]] == [
+        "InputAlias",
+        "OutputAlias",
+    ]
