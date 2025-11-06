@@ -38,6 +38,8 @@ this header as part of its API client configuration.
 
 ## Deployment Workflow
 
+### Local container workflow
+
 1. **Build and run locally**
 
    ```bash
@@ -57,6 +59,43 @@ this header as part of its API client configuration.
    above through your orchestration platform. Ensure the pod joins a network that
    can route to the PLC subnet; on bare metal clusters this may involve
    `hostNetwork: true` or a dedicated Multus attachment.
+
+### Local Python workflow (no Docker)
+
+When Docker is unavailable, the backend can run directly on the host. This
+approach reuses the same environment variables documented above.
+
+1. **Create a virtual environment and install dependencies**
+
+   ```bash
+   python3 -m venv .venv
+   source .venv/bin/activate
+   pip install --upgrade pip
+   pip install -r requirements.txt
+   ```
+
+2. **Build the optional frontend** (skip if you only need the API)
+
+   ```bash
+   cd frontend
+   npm install
+   npm run build
+   cd ..
+   ```
+
+   Building the Vite project produces `frontend/dist`, which FastAPI serves under
+   `/ui` when present. Without this directory only the REST API will be exposed.
+
+3. **Run the API with Uvicorn**
+
+   ```bash
+   PLC_HOST=192.168.1.10 PLC_API_TOKEN=$(openssl rand -hex 16) \
+     uvicorn webapi.main:app --host 0.0.0.0 --port 8000
+   ```
+
+   Replace `PLC_HOST` with the address of the target PLC. The service becomes
+   available at `http://localhost:8000/` (and `/ui` if the frontend has been
+   built).
 
 ## Operational Tasks
 
