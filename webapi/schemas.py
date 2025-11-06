@@ -9,6 +9,8 @@ from pydantic import BaseModel, Field, conint, root_validator, validator
 from cip import CIP_Path
 from services.plc_manager import AssemblySnapshot, CIPStatus, ConnectionStatus
 
+from .orchestrator import SessionDiagnostics
+
 __all__ = [
     "AssemblyQuery",
     "AssemblyReadResponse",
@@ -18,6 +20,7 @@ __all__ = [
     "CommandRequest",
     "CommandResponse",
     "ConnectionStatusSchema",
+    "SessionDiagnosticsResponse",
     "SessionResponse",
 ]
 
@@ -35,6 +38,7 @@ class ConnectionStatusSchema(BaseModel):
     connected: bool
     session_id: int
     enip_connid: int = Field(..., alias="enip_connection_id")
+    sequence: int
     last_status: CIPStatusSchema
 
     @classmethod
@@ -43,6 +47,7 @@ class ConnectionStatusSchema(BaseModel):
             connected=status.connected,
             session_id=status.session_id,
             enip_connection_id=status.enip_connid,
+            sequence=status.sequence,
             last_status=CIPStatusSchema.from_status(status.last_status),
         )
 
@@ -54,6 +59,24 @@ class SessionResponse(BaseModel):
     @classmethod
     def from_handle(cls, session_id: str, status: ConnectionStatus) -> "SessionResponse":
         return cls(session_id=session_id, connection=ConnectionStatusSchema.from_status(status))
+
+
+class SessionDiagnosticsResponse(BaseModel):
+    session_id: str
+    connection: ConnectionStatusSchema
+    keep_alive_pattern_hex: str
+    keep_alive_active: bool
+    last_activity: float
+
+    @classmethod
+    def from_report(cls, report: SessionDiagnostics) -> "SessionDiagnosticsResponse":
+        return cls(
+            session_id=report.session_id,
+            connection=ConnectionStatusSchema.from_status(report.connection),
+            keep_alive_pattern_hex=report.keep_alive_pattern_hex,
+            keep_alive_active=report.keep_alive_active,
+            last_activity=report.last_activity_at,
+        )
 
 
 class CIPPathModel(BaseModel):

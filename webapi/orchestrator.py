@@ -1,6 +1,7 @@
 """Session orchestration helpers bridging the PLC manager and web API."""
 from __future__ import annotations
 
+import binascii
 import struct
 import threading
 import time
@@ -11,6 +12,7 @@ from typing import Dict, Literal
 from scapy import all as scapy_all
 
 from cip import CIP, CIP_Path
+from enip_udp import ENIP_UDP_KEEPALIVE
 from services.plc_manager import (
     AssemblySnapshot,
     CIPStatus,
@@ -21,7 +23,7 @@ from services.plc_manager import (
 )
 from plc import PLCClient
 
-__all__ = ["CommandResult", "SessionHandle", "SessionOrchestrator"]
+__all__ = ["CommandResult", "SessionDiagnostics", "SessionHandle", "SessionOrchestrator"]
 
 
 @dataclass
@@ -32,6 +34,18 @@ class SessionHandle:
     client: PLCClient
     status: ConnectionStatus
     created_at: float = field(default_factory=time.time)
+    last_activity_at: float = field(default_factory=time.time)
+
+
+@dataclass
+class SessionDiagnostics:
+    """Snapshot of diagnostic information derived from a PLC session."""
+
+    session_id: str
+    connection: ConnectionStatus
+    keep_alive_pattern_hex: str
+    keep_alive_active: bool
+    last_activity_at: float
 
 
 @dataclass
@@ -44,6 +58,8 @@ class CommandResult:
 
 class SessionOrchestrator:
     """Coordinate PLC sessions that are shared across API requests."""
+
+    KEEPALIVE_IDLE_SECONDS = 10.0
 
     def __init__(self, manager: PLCManager):
         self._manager = manager
@@ -61,6 +77,8 @@ class SessionOrchestrator:
 
         session_id = uuid.uuid4().hex
         handle = SessionHandle(session_id=session_id, client=client, status=status)
+        self._refresh_status(handle)
+        self._mark_activity(handle)
         with self._lock:
             self._sessions[session_id] = handle
         return handle
@@ -69,18 +87,22 @@ class SessionOrchestrator:
         handle = self._require_session(session_id)
         try:
             status = self._manager.stop_session(handle.client)
+            self._refresh_status(handle)
         finally:
             self._manager._pool.release(handle.client)  # type: ignore[attr-defined]
             with self._lock:
                 self._sessions.pop(session_id, None)
         handle.status.last_status = status
         handle.status.connected = False
+        self._mark_activity(handle)
         return handle.status
 
     def read_assembly(self, session_id: str, class_id: int, instance_id: int, total_size: int) -> AssemblySnapshot:
         handle = self._require_session(session_id)
         data, status = self._manager._read_full_tag(handle.client, class_id, instance_id, total_size)
         handle.status.last_status = status
+        self._refresh_status(handle)
+        self._mark_activity(handle)
         return AssemblySnapshot(
             class_id=class_id,
             instance_id=instance_id,
@@ -107,6 +129,8 @@ class SessionOrchestrator:
         status_code = int(cip_resp.status[0].status)
         status = CIPStatus.from_code(status_code)
         handle.status.last_status = status
+        self._refresh_status(handle)
+        self._mark_activity(handle)
         if status_code not in (0, None):
             raise PLCResponseError(
                 "Failed to write attribute: {}".format(status.message),
@@ -136,6 +160,8 @@ class SessionOrchestrator:
         status = CIPStatus.from_code(status_code)
         handle.status.last_status = status
         payload_bytes = bytes(cip_resp.payload)
+        self._refresh_status(handle)
+        self._mark_activity(handle)
         if status_code not in (0, None):
             raise PLCResponseError(
                 "CIP command failed: {}".format(status.message), status=status
@@ -144,7 +170,30 @@ class SessionOrchestrator:
 
     def get_status(self, session_id: str) -> ConnectionStatus:
         handle = self._require_session(session_id)
+        self._refresh_status(handle)
         return handle.status
+
+    def get_diagnostics(self, session_id: str) -> SessionDiagnostics:
+        handle = self._require_session(session_id)
+        self._refresh_status(handle)
+        keep_alive_pattern_hex = binascii.hexlify(ENIP_UDP_KEEPALIVE).decode("ascii")
+        keep_alive_active = (time.time() - handle.last_activity_at) <= self.KEEPALIVE_IDLE_SECONDS
+        return SessionDiagnostics(
+            session_id=session_id,
+            connection=handle.status,
+            keep_alive_pattern_hex=keep_alive_pattern_hex,
+            keep_alive_active=keep_alive_active,
+            last_activity_at=handle.last_activity_at,
+        )
+
+    def _refresh_status(self, handle: SessionHandle) -> None:
+        handle.status.connected = handle.client.connected
+        handle.status.session_id = getattr(handle.client, "session_id", handle.status.session_id)
+        handle.status.enip_connid = getattr(handle.client, "enip_connid", handle.status.enip_connid)
+        handle.status.sequence = getattr(handle.client, "sequence", handle.status.sequence)
+
+    def _mark_activity(self, handle: SessionHandle) -> None:
+        handle.last_activity_at = time.time()
 
     def _require_session(self, session_id: str) -> SessionHandle:
         with self._lock:
