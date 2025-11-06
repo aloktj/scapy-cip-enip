@@ -246,12 +246,21 @@ def _parse_member_elements(nodes: Iterable[ET.Element]) -> List[AssemblyMember]:
     members: List[AssemblyMember] = []
     for node in nodes:
         attrs = _normalize_attributes(node)
-        name = _get_attr(attrs, "name")
+        scalar = _find_first_scalar(node)
+        name = _get_attr(attrs, "name", "symbol", "symbol_name", "symbolname", "id")
+        if not name and scalar is not None:
+            name = _get_attr(
+                _normalize_attributes(scalar),
+                "name",
+                "symbol",
+                "symbol_name",
+                "symbolname",
+                "id",
+            )
         if not name:
             raise ConfigurationValidationError(
                 f"Element <{node.tag}> is missing required attribute 'name'"
             )
-        scalar = _find_first_scalar(node)
         datatype = _get_attr(attrs, "datatype")
         if datatype is None and scalar is not None:
             datatype = scalar.tag.lower()
@@ -304,7 +313,7 @@ def _parse_scalar_members(node: ET.Element) -> List[AssemblyMember]:
     members: List[AssemblyMember] = []
     for index, scalar in enumerate(_iter_scalar_elements(node)):
         attrs = _normalize_attributes(scalar)
-        name = _get_attr(attrs, "name", "symbol", "symbol_name", "symbolname")
+        name = _get_attr(attrs, "name", "symbol", "symbol_name", "symbolname", "id")
         if not name:
             name = f"{scalar.tag}_{index}"
         datatype = scalar.tag.lower()
