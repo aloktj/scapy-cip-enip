@@ -23,6 +23,7 @@
 import logging
 import socket
 import struct
+from typing import Dict, Mapping, MutableMapping, Tuple
 
 from scapy import all as scapy_all
 
@@ -35,6 +36,11 @@ from enip_tcp import ENIP_TCP, ENIP_SendUnitData, ENIP_SendUnitData_Item, \
 # Global switch to make it easy to test without sending anything
 NO_NETWORK = False
 
+# Registry of canned responses used when NO_NETWORK is enabled. The mapping
+# stores raw attribute payloads keyed by ``(class_id, instance_id)`` tuples to
+# emulate a PLC without opening a socket.
+OFFLINE_FIXTURES: Dict[Tuple[int, int], Dict[int, bytes]] = {}
+
 logger = logging.getLogger(__name__)
 
 
@@ -42,7 +48,10 @@ class PLCClient(object):
     """Handle all the state of an Ethernet/IP session with a PLC"""
 
     def __init__(self, plc_addr, plc_port=44818):
-        if not NO_NETWORK:
+        self._offline = bool(NO_NETWORK)
+        self._offline_store: Dict[Tuple[int, int], MutableMapping[int, bytes]] = {}
+
+        if not self._offline:
             try:
                 self.sock = socket.create_connection((plc_addr, plc_port))
             except socket.error as exc:
@@ -55,15 +64,24 @@ class PLCClient(object):
         self.enip_connid = 0
         self.sequence = 1
 
-        # Open an Ethernet/IP session
-        sessionpkt = ENIP_TCP() / ENIP_RegisterSession()
-        if self.sock is not None:
-            self.sock.send(str(sessionpkt))
-            reply_pkt = self.recv_enippkt()
-            self.session_id = reply_pkt.session
+        if self._offline:
+            self.session_id = 1
+            self.enip_connid = 1
+            self._offline_store = {
+                key: dict(value) for key, value in OFFLINE_FIXTURES.items()
+            }
+        else:
+            # Open an Ethernet/IP session
+            sessionpkt = ENIP_TCP() / ENIP_RegisterSession()
+            if self.sock is not None:
+                self.sock.send(str(sessionpkt))
+                reply_pkt = self.recv_enippkt()
+                self.session_id = reply_pkt.session
 
     @property
     def connected(self):
+        if self._offline:
+            return True
         return True if self.sock else False
 
     def send_rr_cip(self, cippkt):
@@ -141,6 +159,9 @@ class PLCClient(object):
 
     def get_attribute(self, class_id, instance, attr):
         """Get an attribute for the specified class/instance/attr path"""
+        if self._offline:
+            return self._offline_get_attribute(class_id, instance, attr)
+
         # Get_Attribute_Single does not seem to work properly
         # path = CIP_Path.make(class_id=class_id, instance_id=instance, attribute_id=attr)
         # cippkt = CIP(service=0x0e, path=path)  # Get_Attribute_Single
@@ -161,19 +182,29 @@ class PLCClient(object):
         return resp_getattrlist[6:]
 
     def set_attribute(self, class_id, instance, attr, value):
-        """Set the value of attribute class/instance/attr"""
+        """Set the value of attribute class/instance/attr.
+
+        Returns the integer CIP status code when a response is available. ``0``
+        indicates success, while any other value represents an error reported by
+        the PLC. ``None`` is returned when the status could not be determined
+        (for example when no response was received).
+        """
+        if self._offline:
+            self._offline_set_attribute(class_id, instance, attr, value)
+            return 0
+
         path = CIP_Path.make(class_id=class_id, instance_id=instance)
         # User CIP service 4: Set_Attribute_List
         cippkt = CIP(service=4, path=path) / scapy_all.Raw(load=struct.pack('<HH', 1, attr) + value)
         self.send_rr_cm_cip(cippkt)
         if self.sock is None:
-            return
+            return None
         resppkt = self.recv_enippkt()
         cippkt = resppkt[CIP]
-        if cippkt.status[0].status != 0:
+        status_code = int(cippkt.status[0].status)
+        if status_code != 0:
             logger.error("CIP set attribute error: %r", cippkt.status[0])
-            return False
-        return True
+        return status_code
 
     def get_list_of_instances(self, class_id):
         """Use CIP service 0x4b to get a list of instances of the specified class"""
@@ -250,3 +281,48 @@ class PLCClient(object):
             return '[{} zeros]'.format(len(attrval))
         # format in hexadecimal the content of attrval
         return ''.join('{:2x}'.format(ord(x)) for x in attrval)
+
+    # -- Offline helpers -------------------------------------------------
+
+    def _offline_get_attribute(self, class_id, instance, attr):
+        attrs = self._offline_store.get((class_id, instance))
+        if attrs is None:
+            logger.debug(
+                "Offline attribute lookup failed for class %s instance %s", class_id, instance
+            )
+            return None
+        value = attrs.get(attr)
+        if value is None:
+            logger.debug(
+                "Offline attribute %s missing for class %s instance %s",
+                attr,
+                class_id,
+                instance,
+            )
+        return value
+
+    def _offline_set_attribute(self, class_id, instance, attr, value):
+        attrs = self._offline_store.setdefault((class_id, instance), {})
+        attrs[attr] = bytes(value)
+
+
+def register_offline_fixture(
+    class_id: int,
+    instance_id: int,
+    attributes: Mapping[int, bytes],
+    overwrite: bool = True,
+) -> None:
+    """Register a canned set of attributes for offline PLC clients."""
+
+    key = (int(class_id), int(instance_id))
+    stored = OFFLINE_FIXTURES.setdefault(key, {})
+    if overwrite:
+        stored.clear()
+    for attr_id, raw in attributes.items():
+        stored[int(attr_id)] = bytes(raw)
+
+
+def clear_offline_fixtures() -> None:
+    """Remove all registered offline fixtures."""
+
+    OFFLINE_FIXTURES.clear()
