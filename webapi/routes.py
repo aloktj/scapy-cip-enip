@@ -10,7 +10,7 @@ from services.plc_manager import (
     PLCResponseError,
 )
 
-from .dependencies import get_orchestrator
+from .dependencies import get_orchestrator, require_token
 from .orchestrator import CommandResult, SessionOrchestrator
 from .schemas import (
     AssemblyQuery,
@@ -23,7 +23,9 @@ from .schemas import (
     SessionResponse,
 )
 
-api_router = APIRouter(prefix="/sessions", tags=["sessions"])
+api_router = APIRouter(
+    prefix="/sessions", tags=["sessions"], dependencies=[Depends(require_token)]
+)
 
 
 @api_router.post("", response_model=SessionResponse, status_code=status.HTTP_201_CREATED)

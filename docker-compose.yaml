@@ -1,0 +1,14 @@
+version: "3.9"
+
+services:
+  plc-stack:
+    build: .
+    ports:
+      - "${PLC_API_PORT:-8000}:8000"
+    environment:
+      PLC_HOST: ${PLC_HOST:-192.168.1.10}
+      PLC_PORT: ${PLC_PORT:-44818}
+      PLC_POOL_SIZE: ${PLC_POOL_SIZE:-4}
+      PLC_API_TOKEN: ${PLC_API_TOKEN:-}
+    network_mode: "${PLC_NETWORK_MODE:-bridge}"
+    restart: unless-stopped
