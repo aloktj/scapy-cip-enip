@@ -1,29 +1,32 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type ChangeEvent,
+  type DragEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from "react";
 import type {
   AssemblyQueryParams,
   AssemblyReadResponse,
   AssemblyWritePayload,
+  AssemblyRuntimeResponse,
+  CIPStatus,
+  ConfigurationStatus,
   SessionDiagnosticsResponse,
   SessionResponse
 } from "./api/types";
 import { api, ApiError } from "./api/client";
+import { formatApiError } from "./api/errors";
 import { SessionDashboard } from "./components/SessionDashboard";
 import { AssemblyEditor } from "./components/AssemblyEditor";
 import { StatusBadge } from "./components/StatusBadge";
+import { AssemblyCatalog } from "./components/AssemblyCatalog";
 import { resolveStatusMessage } from "./statusMessages";
 import "./App.css";
 
 const DIAGNOSTICS_INTERVAL_MS = 4000;
-
-function formatError(error: unknown): string {
-  if (error instanceof ApiError) {
-    return error.message;
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
-}
 
 export default function App() {
   const [session, setSession] = useState<SessionResponse | null>(null);
@@ -31,11 +34,48 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [diagnosticError, setDiagnosticError] = useState<string | null>(null);
+  const [configuration, setConfiguration] = useState<ConfigurationStatus | null>(null);
+  const [configLoading, setConfigLoading] = useState(false);
+  const [configError, setConfigError] = useState<string | null>(null);
+  const [configSuccess, setConfigSuccess] = useState<string | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const activeStatus = useMemo(() => diagnostics?.connection.last_status ?? session?.connection.last_status, [
     diagnostics,
     session
   ]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadConfiguration = async () => {
+      setConfigLoading(true);
+      setConfigError(null);
+      try {
+        const status = await api.getConfiguration();
+        if (cancelled) {
+          return;
+        }
+        setConfiguration(status);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+        setConfigError(formatApiError(error));
+      } finally {
+        if (!cancelled) {
+          setConfigLoading(false);
+        }
+      }
+    };
+
+    void loadConfiguration();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!session) {
@@ -58,7 +98,7 @@ export default function App() {
         if (cancelled) {
           return;
         }
-        const message = formatError(error);
+        const message = formatApiError(error);
         setDiagnosticError(message);
         if (error instanceof ApiError && error.status === 404) {
           setSession(null);
@@ -86,7 +126,7 @@ export default function App() {
       const newSession = await api.startSession();
       setSession(newSession);
     } catch (error) {
-      setGlobalError(formatError(error));
+      setGlobalError(formatApiError(error));
     } finally {
       setLoading(false);
     }
@@ -103,7 +143,7 @@ export default function App() {
       setSession(stopped);
       setDiagnostics(null);
     } catch (error) {
-      setGlobalError(formatError(error));
+      setGlobalError(formatApiError(error));
     } finally {
       setLoading(false);
     }
@@ -137,6 +177,87 @@ export default function App() {
     const code = activeStatus.code != null ? `0x${activeStatus.code.toString(16).padStart(2, "0")}` : "--";
     return `${code} – ${friendly}`;
   }, [activeStatus]);
+
+  const handleBrowseClick = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleFiles = useCallback(
+    (files: FileList | null) => {
+      const file = files?.[0];
+      if (!file) {
+        return;
+      }
+      setConfigSuccess(null);
+      setConfigError(null);
+      setConfigLoading(true);
+      void file
+        .text()
+        .then((xml) => api.uploadConfiguration(xml))
+        .then((status) => {
+          setConfiguration(status);
+          setConfigSuccess(
+            `Loaded ${status.identity?.name ?? "configuration"} with ${status.assemblies.length} assemblies.`
+          );
+        })
+        .catch((error) => {
+          setConfigError(formatApiError(error));
+        })
+        .finally(() => {
+          setConfigLoading(false);
+        });
+    },
+    []
+  );
+
+  const handleFileInput = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      handleFiles(event.target.files);
+      event.target.value = "";
+    },
+    [handleFiles]
+  );
+
+  const handleDrop = useCallback(
+    (event: DragEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      setDragActive(false);
+      handleFiles(event.dataTransfer.files);
+    },
+    [handleFiles]
+  );
+
+  const handleDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setDragActive(true);
+  }, []);
+
+  const handleDragLeave = useCallback(() => {
+    setDragActive(false);
+  }, []);
+
+  const fetchAssemblyRuntime = useCallback(
+    async (alias: string): Promise<AssemblyRuntimeResponse> => {
+      if (!session) {
+        throw new Error("Start a session before inspecting assemblies");
+      }
+      return api.getAssemblyRuntime(session.session_id, alias);
+    },
+    [session]
+  );
+
+  const writeAssemblyData = useCallback(
+    async (alias: string, payloadHex: string): Promise<CIPStatus> => {
+      if (!session) {
+        throw new Error("Start a session before writing assemblies");
+      }
+      return api.writeAssemblyData(session.session_id, alias, payloadHex);
+    },
+    [session]
+  );
+
+  const assemblies = configuration?.assemblies ?? [];
+  const deviceIdentity = configuration?.identity;
 
   return (
     <div className="app-shell">
@@ -176,6 +297,76 @@ export default function App() {
           )}
         </div>
       </div>
+
+      <div className="card">
+        <h2>Device configuration</h2>
+        <div
+          className={`config-dropzone${dragActive ? " dragging" : ""}`}
+          onDragOver={handleDragOver}
+          onDragEnter={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          <p className="muted-text" style={{ marginBottom: "0.75rem" }}>
+            Drop a Rockwell/Studio 5000 XML export or browse to upload a configuration.
+          </p>
+          <button type="button" onClick={handleBrowseClick} disabled={configLoading}>
+            {configLoading ? "Uploading…" : "Browse XML"}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xml,text/xml,application/xml"
+            hidden
+            onChange={handleFileInput}
+          />
+        </div>
+        {configError && <p className="error-text" style={{ marginTop: "0.75rem" }}>{configError}</p>}
+        {configSuccess && (
+          <p className="success-text" style={{ marginTop: "0.75rem" }}>{configSuccess}</p>
+        )}
+        {configuration && (
+          <div className="config-summary" style={{ marginTop: "1rem" }}>
+            <div className="config-summary-grid">
+              <div>
+                <span className="config-label">Status</span>
+                <span className="config-value">{configuration.loaded ? "Loaded" : "Not loaded"}</span>
+              </div>
+              <div>
+                <span className="config-label">Device</span>
+                <span className="config-value">{deviceIdentity?.name ?? "—"}</span>
+              </div>
+              <div>
+                <span className="config-label">Vendor</span>
+                <span className="config-value">{deviceIdentity?.vendor ?? "—"}</span>
+              </div>
+              <div>
+                <span className="config-label">Product code</span>
+                <span className="config-value">{deviceIdentity?.product_code ?? "—"}</span>
+              </div>
+              <div>
+                <span className="config-label">Revision</span>
+                <span className="config-value">{deviceIdentity?.revision ?? "—"}</span>
+              </div>
+              <div>
+                <span className="config-label">Serial</span>
+                <span className="config-value">{deviceIdentity?.serial_number ?? "—"}</span>
+              </div>
+            </div>
+            <p className="muted-text" style={{ marginTop: "0.75rem" }}>
+              Assemblies discovered: <strong>{assemblies.length}</strong>
+            </p>
+          </div>
+        )}
+      </div>
+
+      <AssemblyCatalog
+        assemblies={assemblies}
+        sessionActive={Boolean(session)}
+        pollIntervalMs={DIAGNOSTICS_INTERVAL_MS}
+        fetchAssembly={fetchAssemblyRuntime}
+        writeAssembly={writeAssemblyData}
+      />
 
       <AssemblyEditor disabled={!session || loading} onRead={handleRead} onWrite={handleWrite} />
     </div>
