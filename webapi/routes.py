@@ -1,16 +1,22 @@
-"""FastAPI routes for PLC orchestration."""
+"""FastAPI routes for PLC orchestration and configuration management."""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from cip import CIP_Path
+from services.config_loader import (
+    ConfigurationError,
+    ConfigurationParseError,
+    load_configuration,
+)
+from services.config_store import ConfigurationStore
 from services.plc_manager import (
     PLCConnectionError,
     PLCManagerError,
     PLCResponseError,
 )
 
-from .dependencies import get_orchestrator, require_token
+from .dependencies import get_config_store, get_orchestrator, require_token
 from .orchestrator import CommandResult, SessionOrchestrator
 from .schemas import (
     AssemblyQuery,
@@ -19,16 +25,25 @@ from .schemas import (
     CIPStatusSchema,
     CommandRequest,
     CommandResponse,
+    ConfigurationStatusSchema,
+    ConfigurationUploadRequest,
+    ConfigurationValidationResponse,
     SessionDiagnosticsResponse,
     SessionResponse,
 )
 
-api_router = APIRouter(
+api_router = APIRouter()
+
+sessions_router = APIRouter(
     prefix="/sessions", tags=["sessions"], dependencies=[Depends(require_token)]
 )
 
+config_router = APIRouter(
+    prefix="/config", tags=["configuration"], dependencies=[Depends(require_token)]
+)
 
-@api_router.post("", response_model=SessionResponse, status_code=status.HTTP_201_CREATED)
+
+@sessions_router.post("", response_model=SessionResponse, status_code=status.HTTP_201_CREATED)
 def start_session(
     request: Request,
     orchestrator: SessionOrchestrator = Depends(get_orchestrator),
@@ -47,7 +62,7 @@ def start_session(
     return SessionResponse.from_handle(handle.session_id, handle.status)
 
 
-@api_router.delete("/{session_id}", response_model=SessionResponse)
+@sessions_router.delete("/{session_id}", response_model=SessionResponse)
 def stop_session(
     session_id: str,
     request: Request,
@@ -67,7 +82,7 @@ def stop_session(
     return SessionResponse.from_handle(session_id, connection)
 
 
-@api_router.get("/{session_id}", response_model=SessionResponse)
+@sessions_router.get("/{session_id}", response_model=SessionResponse)
 def get_session(
     session_id: str,
     request: Request,
@@ -81,7 +96,7 @@ def get_session(
     return SessionResponse.from_handle(session_id, status)
 
 
-@api_router.get("/{session_id}/diagnostics", response_model=SessionDiagnosticsResponse)
+@sessions_router.get("/{session_id}/diagnostics", response_model=SessionDiagnosticsResponse)
 def session_diagnostics(
     session_id: str,
     request: Request,
@@ -95,7 +110,7 @@ def session_diagnostics(
     return SessionDiagnosticsResponse.from_report(report)
 
 
-@api_router.get("/{session_id}/assemblies", response_model=AssemblyReadResponse)
+@sessions_router.get("/{session_id}/assemblies", response_model=AssemblyReadResponse)
 def read_assembly(
     session_id: str,
     request: Request,
@@ -121,7 +136,7 @@ def read_assembly(
     return AssemblyReadResponse.from_snapshot(snapshot)
 
 
-@api_router.patch("/{session_id}/assemblies/{path}", response_model=CIPStatusSchema)
+@sessions_router.patch("/{session_id}/assemblies/{path}", response_model=CIPStatusSchema)
 def update_assembly(
     session_id: str,
     path: str,
@@ -151,7 +166,7 @@ def update_assembly(
     return CIPStatusSchema.from_status(status_obj)
 
 
-@api_router.post("/{session_id}/commands", response_model=CommandResponse)
+@sessions_router.post("/{session_id}/commands", response_model=CommandResponse)
 def execute_command(
     session_id: str,
     payload: CommandRequest,
@@ -176,3 +191,44 @@ def execute_command(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     request.state.cip_status = result.status
     return CommandResponse.from_result(result.status, result.payload)
+
+
+@config_router.post("", response_model=ConfigurationStatusSchema, status_code=status.HTTP_201_CREATED)
+def upload_configuration(
+    payload: ConfigurationUploadRequest,
+    store: ConfigurationStore = Depends(get_config_store),
+) -> ConfigurationStatusSchema:
+    try:
+        configuration = load_configuration(payload.xml)
+    except ConfigurationParseError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except ConfigurationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+
+    state = store.load(configuration)
+    return ConfigurationStatusSchema.from_state(state)
+
+
+@config_router.post("/validate", response_model=ConfigurationValidationResponse)
+def validate_configuration(payload: ConfigurationUploadRequest) -> ConfigurationValidationResponse:
+    try:
+        configuration = load_configuration(payload.xml)
+    except ConfigurationParseError as exc:
+        return ConfigurationValidationResponse(valid=False, errors=[str(exc)])
+    except ConfigurationError as exc:
+        return ConfigurationValidationResponse(valid=False, errors=[str(exc)])
+
+    return ConfigurationValidationResponse(
+        valid=True,
+        errors=[],
+        configuration=ConfigurationStatusSchema.from_configuration(configuration),
+    )
+
+
+@config_router.get("", response_model=ConfigurationStatusSchema)
+def get_configuration(store: ConfigurationStore = Depends(get_config_store)) -> ConfigurationStatusSchema:
+    return ConfigurationStatusSchema.from_state(store.get_state())
+
+
+api_router.include_router(sessions_router)
+api_router.include_router(config_router)
