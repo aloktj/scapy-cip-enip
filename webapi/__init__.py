@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from services.config_store import ConfigurationStore
+from services.io_runtime import IORuntime
 from services.plc_manager import PLCManager
 
 from .dependencies import (
@@ -33,7 +34,8 @@ def create_app(
     """Create and configure a FastAPI application bound to a :class:`PLCManager`."""
     app = FastAPI(title=title)
 
-    orchestrator = SessionOrchestrator(plc_manager)
+    io_runtime = IORuntime()
+    orchestrator = SessionOrchestrator(plc_manager, io_runtime=io_runtime)
     configure_orchestrator(orchestrator)
     configure_authenticator(auth_token or os.getenv("PLC_API_TOKEN"))
     configure_config_store(configuration_store or ConfigurationStore())

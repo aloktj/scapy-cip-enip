@@ -14,6 +14,7 @@ from services.config_loader import (
     DeviceIdentity,
 )
 from services.config_store import ConfigurationState
+from services.io_runtime import AssemblyMemberValue, AssemblyRuntimeView
 from services.plc_manager import AssemblySnapshot, CIPStatus, ConnectionStatus
 
 from .orchestrator import SessionDiagnostics
@@ -21,7 +22,9 @@ from .orchestrator import SessionDiagnostics
 __all__ = [
     "AssemblyQuery",
     "AssemblyReadResponse",
+    "AssemblyRuntimeResponse",
     "AssemblyWriteRequest",
+    "AssemblyDataWriteRequest",
     "CIPPathModel",
     "CIPStatusSchema",
     "CommandRequest",
@@ -171,6 +174,77 @@ class AssemblyWriteRequest(BaseModel):
 
     def value_bytes(self) -> bytes:
         return binascii.unhexlify(self.value_hex)
+
+
+class AssemblyDataWriteRequest(BaseModel):
+    payload_hex: str = Field(..., description="Hex-encoded payload to send to the assembly")
+
+    @field_validator("payload_hex")
+    @classmethod
+    def validate_payload(cls, value: str) -> str:
+        try:
+            if len(value) % 2:
+                raise ValueError
+            binascii.unhexlify(value)
+        except (ValueError, binascii.Error):
+            raise ValueError("payload_hex must be an even-length hexadecimal string")
+        return value.lower()
+
+    def value_bytes(self) -> bytes:
+        return binascii.unhexlify(self.payload_hex)
+
+
+class AssemblyMemberValueSchema(BaseModel):
+    name: str
+    offset: Optional[int]
+    size: Optional[int]
+    datatype: Optional[str]
+    description: Optional[str]
+    raw_hex: str
+    int_value: Optional[int]
+
+    @classmethod
+    def from_value(cls, value: AssemblyMemberValue) -> "AssemblyMemberValueSchema":
+        return cls(
+            name=value.name,
+            offset=value.offset,
+            size=value.size,
+            datatype=value.datatype,
+            description=value.description,
+            raw_hex=value.raw_hex,
+            int_value=value.int_value,
+        )
+
+
+class AssemblyRuntimeResponse(BaseModel):
+    alias: str
+    direction: str
+    size: Optional[int]
+    class_id: int
+    instance_id: int
+    payload_hex: Optional[str]
+    timestamp: Optional[float]
+    status: CIPStatusSchema
+    word_values: Optional[list[int]]
+    members: list[AssemblyMemberValueSchema]
+
+    @classmethod
+    def from_view(cls, view: AssemblyRuntimeView) -> "AssemblyRuntimeResponse":
+        payload_hex: Optional[str] = None
+        if view.payload:
+            payload_hex = binascii.hexlify(view.payload).decode("ascii")
+        return cls(
+            alias=view.alias,
+            direction=view.direction,
+            size=view.size,
+            class_id=view.class_id,
+            instance_id=view.instance_id,
+            payload_hex=payload_hex,
+            timestamp=view.timestamp,
+            status=CIPStatusSchema.from_status(view.status),
+            word_values=list(view.word_values) if view.word_values else None,
+            members=[AssemblyMemberValueSchema.from_value(member) for member in view.members],
+        )
 
 
 class CommandRequest(BaseModel):
