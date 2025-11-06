@@ -34,7 +34,11 @@ The ASGI entrypoint (`webapi/main.py`) reads the following environment variables
 Authentication is optional by default but strongly recommended. When
 `PLC_API_TOKEN` is set the API rejects requests that do not include an
 `Authorization: Bearer <token>` header. The frontend fetch code should inject
-this header as part of its API client configuration.
+this header as part of its API client configuration. The operator console
+exposes an **API bearer token** field inside the *Device configuration* card;
+paste the same secret value provided in `PLC_API_TOKEN` and click **Save token**.
+The browser stores the token locally and attaches it to every request so the
+drop zone and diagnostic panels work without manual cURL sessions.
 
 ## Deployment Workflow
 

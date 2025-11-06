@@ -80,6 +80,15 @@ button:hover:not(:disabled) {
   transform: translateY(-1px);
 }
 
+.secondary-button {
+  background-color: #e2e8f0;
+  color: #1f2937;
+}
+
+.secondary-button:hover:not(:disabled) {
+  background-color: #cbd5f5;
+}
+
 .form-grid {
   display: grid;
   gap: 1rem;
@@ -134,6 +143,18 @@ button:hover:not(:disabled) {
   gap: 1rem;
   flex-wrap: wrap;
   align-items: center;
+}
+
+.token-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.token-input {
+  flex: 1 1 220px;
+  min-width: 200px;
 }
 
 .badge {
