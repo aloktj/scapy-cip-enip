@@ -47,7 +47,9 @@ export default function App() {
     if (typeof window === "undefined") {
       return "";
     }
-    return window.localStorage.getItem(API_TOKEN_KEY)?.trim() ?? "";
+    const saved = window.localStorage.getItem(API_TOKEN_KEY)?.trim() ?? "";
+    setAuthToken(saved);
+    return saved;
   });
   const [tokenDraft, setTokenDraft] = useState<string>(apiToken);
   const [tokenFeedback, setTokenFeedback] = useState<string | null>(null);
@@ -70,7 +72,6 @@ export default function App() {
   ]);
 
   useEffect(() => {
-    setAuthToken(apiToken);
     if (typeof window === "undefined") {
       return;
     }
@@ -307,6 +308,7 @@ export default function App() {
 
   const handleTokenSave = useCallback(() => {
     const trimmed = tokenDraft.trim();
+    setAuthToken(trimmed);
     setApiToken(trimmed);
     setTokenDraft(trimmed);
     setTokenFeedback(trimmed ? "Bearer token saved for API requests." : "Cleared saved bearer token.");
@@ -314,6 +316,7 @@ export default function App() {
 
   const handleTokenClear = useCallback(() => {
     setTokenDraft("");
+    setAuthToken(null);
     setApiToken("");
     setTokenFeedback("Cleared saved bearer token.");
   }, []);
