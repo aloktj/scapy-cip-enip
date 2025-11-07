@@ -121,18 +121,15 @@ def load_configuration(xml_payload: str | bytes) -> DeviceConfiguration:
     except ET.ParseError as exc:
         raise ConfigurationParseError("Malformed XML payload") from exc
 
-    root_tag = root.tag
-    if isinstance(root_tag, str) and "}" in root_tag:
-        root_tag = root_tag.rsplit("}", 1)[-1]
-    normalized_root_tag = _normalize_key(root_tag if isinstance(root_tag, str) else "")
+    raw_root_tag = root.tag
+    if isinstance(raw_root_tag, str) and "}" in raw_root_tag:
+        raw_root_tag = raw_root_tag.rsplit("}", 1)[-1]
+    normalized_root_tag = _normalize_key(raw_root_tag) if isinstance(raw_root_tag, str) else ""
 
     if normalized_root_tag not in _ALLOWED_ROOT_TAGS:
-        allowed = [f"<{name}>" for name in _ALLOWED_ROOT_TAGS.values()]
-        if len(allowed) > 1:
-            allowed_names = ", ".join(allowed[:-1]) + f", or {allowed[-1]}"
-        else:
-            allowed_names = allowed[0]
-        raise ConfigurationValidationError(f"Root element must be {allowed_names}")
+        raise ConfigurationValidationError(
+            "Root element must be <Device>, <DeviceConfiguration>, <Plc>, <Cip>, or <CIPDevice>"
+        )
 
     identity = _parse_identity(_find_child(root, "Identity"))
 

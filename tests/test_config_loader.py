@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from services.config_loader import load_configuration
+import pytest
+
+from services.config_loader import ConfigurationValidationError, load_configuration
 
 
 CIP_WITH_MEMBER_IDS = """
@@ -45,4 +47,7 @@ def test_load_configuration_accepts_generic_adapter_template():
     sample_path = Path("docs/samples/generic_adapter_template.xml")
     payload = sample_path.read_text(encoding="utf-8")
 
-    load_configuration(payload)
+    try:
+        load_configuration(payload)
+    except ConfigurationValidationError as exc:
+        pytest.fail(f"Unexpected validation error: {exc}")
