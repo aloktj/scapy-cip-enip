@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import binascii
 import time
+import types
 
 import pytest
 
@@ -14,7 +15,7 @@ from services.config_loader import (
     DeviceIdentity,
 )
 from services.io_runtime import IORuntime, AssemblyDirectionError
-from services.plc_manager import PLCResponseError
+from services.plc_manager import PLCConnectionError, PLCResponseError
 from webapi.orchestrator import SessionOrchestrator
 
 
@@ -153,3 +154,19 @@ def test_write_assembly_enforces_direction(dummy_client, build_manager, make_cip
 
     with pytest.raises(AssemblyDirectionError):
         orchestrator.write_assembly(handle.session_id, "inputs", b"\x00\x00\x00\x00")
+
+
+def test_start_session_timeout_releases_client(dummy_client, build_manager):
+    manager = build_manager(dummy_client)
+
+    def _timeout_start_session(self, client):
+        raise PLCConnectionError("Forward Open failed: Timed out while waiting for ENIP header")
+
+    manager.start_session = types.MethodType(_timeout_start_session, manager)
+    orchestrator = SessionOrchestrator(manager)
+
+    with pytest.raises(PLCConnectionError):
+        orchestrator.start_session()
+
+    assert dummy_client in manager._pool.released
+    assert orchestrator._sessions == {}

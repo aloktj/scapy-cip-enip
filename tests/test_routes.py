@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import types
+
 from fastapi.testclient import TestClient
 
 from webapi import create_app
+from services.plc_manager import PLCConnectionError
 
 AUTH_TOKEN = "super-secret"
 
@@ -77,6 +80,23 @@ def test_routes_require_authentication(build_manager, dummy_client):
     payload = response.json()
     assert payload["host"] == "127.0.0.1"
     assert payload["port"] == 44818
+
+
+def test_start_session_timeout_returns_502(build_manager, dummy_client):
+    manager = build_manager(dummy_client)
+
+    def _timeout_start_session(self, client):
+        raise PLCConnectionError("Forward Open failed: Timed out while waiting for ENIP header")
+
+    manager.start_session = types.MethodType(_timeout_start_session, manager)
+
+    app = create_app(manager, auth_token=AUTH_TOKEN)
+    client = TestClient(app)
+
+    response = client.post("/sessions", headers=_auth_headers())
+
+    assert response.status_code == 502
+    assert "Timed out" in response.json()["detail"]
 
 
 def test_session_lifecycle_and_commands(build_manager, dummy_client, make_cip_response):

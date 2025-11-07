@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import socket
+
 import pytest
 from scapy import all as scapy_all
 
@@ -53,6 +55,8 @@ def test_recv_enippkt_reassembles_partial_reads() -> None:
     client = PLCClient.__new__(PLCClient)
     client.sock = sock
     client._offline = False
+    client._read_timeout = None
+    client._write_timeout = None
 
     packet = client.recv_enippkt()
     assert bytes(packet) == raw_packet
@@ -67,6 +71,54 @@ def test_recv_enippkt_raises_on_premature_eof() -> None:
     client = PLCClient.__new__(PLCClient)
     client.sock = sock
     client._offline = False
+    client._read_timeout = None
+    client._write_timeout = None
 
     with pytest.raises(PLCConnectionError):
+        client.recv_enippkt()
+
+
+class _TimeoutSocket:
+    def __init__(self, *, mode: str) -> None:
+        self._mode = mode
+        self.timeout = None
+
+    def settimeout(self, value):
+        self.timeout = value
+
+    def sendall(self, data):
+        if self._mode == "send":
+            raise socket.timeout("send timed out")
+        return len(data)
+
+    def recv(self, size):
+        if self._mode == "recv":
+            raise socket.timeout("recv timed out")
+        return b""
+
+
+def test_send_rr_cip_timeout_raises() -> None:
+    sock = _TimeoutSocket(mode="send")
+    client = PLCClient.__new__(PLCClient)
+    client.sock = sock
+    client._offline = False
+    client.session_id = 1
+    client._read_timeout = 0.1
+    client._write_timeout = 0.1
+
+    packet = CIP(path=CIP_Path.make(class_id=1, instance_id=1))
+
+    with pytest.raises(PLCConnectionError, match="Timed out while sending CIP request"):
+        client.send_rr_cip(packet)
+
+
+def test_recv_enippkt_timeout_raises() -> None:
+    sock = _TimeoutSocket(mode="recv")
+    client = PLCClient.__new__(PLCClient)
+    client.sock = sock
+    client._offline = False
+    client._read_timeout = 0.1
+    client._write_timeout = 0.1
+
+    with pytest.raises(PLCConnectionError, match="Timed out while waiting for ENIP header"):
         client.recv_enippkt()

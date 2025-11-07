@@ -97,13 +97,25 @@ class AssemblySnapshot:
 class PLCConnectionPool:
     """Very small footprint pool for :class:`PLCClient` instances."""
 
-    def __init__(self, plc_addr: str, plc_port: int = 44818, max_size: int = 2):
+    def __init__(
+        self,
+        plc_addr: str,
+        plc_port: int = 44818,
+        max_size: int = 2,
+        *,
+        connect_timeout: float | None = None,
+        read_timeout: float | None = None,
+        write_timeout: float | None = None,
+    ):
         self._plc_addr = plc_addr
         self._plc_port = plc_port
         self._key: Tuple[str, int] = (plc_addr, plc_port)
         self._max_size = max(1, max_size)
         self._clients: Deque[PLCClient] = deque()
         self._created = 0
+        self._connect_timeout = connect_timeout
+        self._read_timeout = read_timeout
+        self._write_timeout = write_timeout
 
     def acquire(self) -> PLCClient:
         try:
@@ -123,7 +135,15 @@ class PLCConnectionPool:
 
     def _create_client(self) -> PLCClient:
         try:
-            client = PLCClient(self._plc_addr, self._plc_port)
+            client = PLCClient(
+                self._plc_addr,
+                self._plc_port,
+                connect_timeout=self._connect_timeout,
+                read_timeout=self._read_timeout,
+                write_timeout=self._write_timeout,
+            )
+        except socket.timeout as exc:
+            raise PLCConnectionError("Timed out while connecting to PLC") from exc
         except (socket.error, OSError) as exc:
             raise PLCConnectionError("Failed to open PLC socket") from exc
         except Scapy_Exception as exc:
@@ -143,12 +163,31 @@ class PLCConnectionPool:
 class PLCManager:
     """Context managed access to a PLC with connection pooling."""
 
-    def __init__(self, plc_addr: str, plc_port: int = 44818, pool_size: int = 2):
+    def __init__(
+        self,
+        plc_addr: str,
+        plc_port: int = 44818,
+        pool_size: int = 2,
+        *,
+        connect_timeout: float | None = None,
+        read_timeout: float | None = None,
+        write_timeout: float | None = None,
+    ):
         self._default_addr = plc_addr
         self._default_port = plc_port
         self._pool_size = pool_size
         self._pools: Dict[Tuple[str, int], PLCConnectionPool] = {}
-        self._pools[(plc_addr, plc_port)] = PLCConnectionPool(plc_addr, plc_port, pool_size)
+        self._connect_timeout = connect_timeout
+        self._read_timeout = read_timeout
+        self._write_timeout = write_timeout
+        self._pools[(plc_addr, plc_port)] = PLCConnectionPool(
+            plc_addr,
+            plc_port,
+            pool_size,
+            connect_timeout=connect_timeout,
+            read_timeout=read_timeout,
+            write_timeout=write_timeout,
+        )
 
     @property
     def default_host(self) -> str:
@@ -170,7 +209,14 @@ class PLCManager:
         pool = self._pools.get(key)
         if pool is None:
             logger.debug("Creating PLC connection pool for %s:%s", host, port)
-            pool = PLCConnectionPool(host, port, self._pool_size)
+            pool = PLCConnectionPool(
+                host,
+                port,
+                self._pool_size,
+                connect_timeout=self._connect_timeout,
+                read_timeout=self._read_timeout,
+                write_timeout=self._write_timeout,
+            )
             self._pools[key] = pool
         return pool
 
@@ -215,6 +261,8 @@ class PLCManager:
             if auto_start:
                 status = self.start_session(client)
             yield client, status
+        except socket.timeout as exc:
+            raise PLCConnectionError("PLC operation timed out") from exc
         except (socket.error, OSError) as exc:
             raise PLCConnectionError("Socket failure during PLC communication") from exc
         except Scapy_Exception as exc:
@@ -268,9 +316,7 @@ class PLCManager:
         try:
             response = client.recv_enippkt()
         except PLCConnectionError as exc:
-            raise PLCConnectionError(
-                "Socket closed while waiting for Forward Open response"
-            ) from exc
+            raise PLCConnectionError(f"Forward Open failed: {exc}") from exc
         if response is None:
             raise PLCResponseError("No response received for Forward Open request")
         cip_resp = response[CIP]
@@ -295,9 +341,7 @@ class PLCManager:
         try:
             response = client.recv_enippkt()
         except PLCConnectionError as exc:
-            raise PLCConnectionError(
-                "Socket closed while waiting for Forward Close response"
-            ) from exc
+            raise PLCConnectionError(f"Forward Close failed: {exc}") from exc
         if response is None:
             raise PLCResponseError("No response received for Forward Close request")
         cip_resp = response[CIP]
@@ -332,9 +376,7 @@ class PLCManager:
             try:
                 response = client.recv_enippkt()
             except PLCConnectionError as exc:
-                raise PLCConnectionError(
-                    "Socket closed while reading tag data"
-                ) from exc
+                raise PLCConnectionError(f"Tag read failed: {exc}") from exc
             if response is None:
                 raise PLCResponseError("No response received while reading tag")
 
