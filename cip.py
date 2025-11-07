@@ -457,21 +457,22 @@ class CIP_ConnectionParam(scapy_all.Packet):
     ]
 
     def pre_dissect(self, s):
+        self._remaining = s[2:]
         b = struct.unpack('<H', s[:2])[0]
-        return struct.pack('>H', int(b)) + s[2:]
-
-    def do_build(self):
-        # scapy's PacketField expects ``bytes`` on Python 3 when serializing the
-        # nested ``CIP_ConnectionParam`` structure.  The original implementation
-        # returned an empty ``str`` instance which relied on the Python 2
-        # equivalence between ``str`` and ``bytes``.  Returning a native
-        # ``bytes`` object keeps the behaviour identical while avoiding
-        # ``TypeError`` when higher-level packets concatenate the serialized
-        # fragments.
-        return b""
+        return struct.pack('>H', int(b))
 
     def extract_padding(self, s):
-        return b"", s
+        remain = getattr(self, "_remaining", b"")
+        self._remaining = b""
+        return b"", remain
+
+    def post_build(self, p, pay):
+        """Serialise the packed bit fields as a little-endian word."""
+
+        if len(p) >= 2:
+            value = struct.unpack(">H", p[:2])[0]
+            p = struct.pack("<H", value) + p[2:]
+        return p + pay
 
 
 class CIP_ReqForwardOpen(scapy_all.Packet):
