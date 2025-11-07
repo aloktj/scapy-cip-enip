@@ -30,8 +30,8 @@ CIP_CONFIG_XML = """
     name="CIP Enabled PLC"
     vendorId="101"
     productCode="202"
-    revisionMajor="2"
-    revisionMinor="1"
+    majorRev="2"
+    minorRev="1"
     serialNumber="0xABCDEF"
   />
   <assemblies>
