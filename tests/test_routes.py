@@ -35,7 +35,13 @@ CIP_CONFIG_XML = """
     serialNumber="0xABCDEF"
   />
   <assemblies>
-    <assembly id="InputAlias" dir="in" instanceId="0x64" size="4">
+    <assembly
+      name="PrimaryInput"
+      alias="LegacyInput"
+      connectionPoint="0x64"
+      dir="t2o"
+      sizeBytes="4"
+    >
       <members>
         <member name="Status">
           <usint offset="0" />
@@ -45,9 +51,13 @@ CIP_CONFIG_XML = """
         </member>
       </members>
     </assembly>
-    <assembly id="OutputAlias" dir="out" instanceId="0x65">
+    <assembly alias="OutputAlias" id="0x65" direction="o2t">
       <usint name="Command" offset="0" />
       <string name="Label" offset="1" length="8">Descriptive label</string>
+    </assembly>
+    <assembly name="AuxConfig" alias="IgnoredConfig" connectionPoint="0x66" direction="CONFIG" SizeBytes="2">
+      <member name="Mode" datatype="usint" offset="0" size="1" />
+      <member name="Flags" datatype="usint" offset="1" size="1" />
     </assembly>
   </assemblies>
 </cip>
@@ -309,10 +319,10 @@ def test_cip_configuration_support(build_manager, dummy_client):
     assert payload["identity"]["revision"] == "2.1"
     assert payload["identity"]["serial_number"] == "0xABCDEF"
 
-    assert len(payload["assemblies"]) == 2
+    assert len(payload["assemblies"]) == 3
 
     first = payload["assemblies"][0]
-    assert first["alias"] == "InputAlias"
+    assert first["alias"] == "PrimaryInput"
     assert first["class_id"] == 0x04
     assert first["instance_id"] == 0x64
     assert first["direction"] == "input"
@@ -334,11 +344,18 @@ def test_cip_configuration_support(build_manager, dummy_client):
     assert second["members"][1]["size"] == 8
     assert second["members"][1]["description"] == "Descriptive label"
 
+    third = payload["assemblies"][2]
+    assert third["alias"] == "AuxConfig"
+    assert third["direction"] == "configuration"
+    assert third["size"] == 2
+    assert [member["name"] for member in third["members"]] == ["Mode", "Flags"]
+
     listing = client.get("/config", headers=_auth_headers())
     assert listing.status_code == 200
     catalog = listing.json()
     assert catalog["loaded"] is True
     assert [assembly["alias"] for assembly in catalog["assemblies"]] == [
-        "InputAlias",
+        "PrimaryInput",
         "OutputAlias",
+        "AuxConfig",
     ]
