@@ -389,6 +389,22 @@ class CIP(scapy_all.Packet):
                 p = p[0:1] + b"\0\0\0" + p[1:]
         return p + pay
 
+    def post_dissect(self, s):
+        """Ensure responses always expose a status entry."""
+        if not self.status:
+            is_response = self.direction in (1, "response")
+            if not is_response:
+                raw = getattr(self, "original", b"") or b""
+                if raw:
+                    is_response = bool(raw[0] & 0x80)
+            if not is_response:
+                return scapy_all.Packet.post_dissect(self, s)
+            # Some devices omit the general status bytes when no error occurred.
+            # Normalize those responses to expose a success status so callers can
+            # consistently rely on ``status[0]`` existing.
+            self.status = [CIP_ResponseStatus()]  # type: ignore[list-item]
+        return scapy_all.Packet.post_dissect(self, s)
+
 
 class _CIPMSPPacketList(scapy_all.PacketListField):
     """The list of packets in a CIP MultipleServicePacket message"""
@@ -441,15 +457,22 @@ class CIP_ConnectionParam(scapy_all.Packet):
     ]
 
     def pre_dissect(self, s):
+        self._remaining = s[2:]
         b = struct.unpack('<H', s[:2])[0]
-        return struct.pack('>H', int(b)) + s[2:]
-
-    def do_build(self):
-        p = ''
-        return p
+        return struct.pack('>H', int(b))
 
     def extract_padding(self, s):
-        return '', s
+        remain = getattr(self, "_remaining", b"")
+        self._remaining = b""
+        return b"", remain
+
+    def post_build(self, p, pay):
+        """Serialise the packed bit fields as a little-endian word."""
+
+        if len(p) >= 2:
+            value = struct.unpack(">H", p[:2])[0]
+            p = struct.pack("<H", value) + p[2:]
+        return p + pay
 
 
 class CIP_ReqForwardOpen(scapy_all.Packet):
@@ -521,14 +544,18 @@ class CIP_MultipleServicePacket(scapy_all.Packet):
     def do_build(self):
         """Build the packet by concatenating packets and building the offsets list"""
         # Build the sub packets
-        subpkts = [str(pkt) for pkt in self.packets]
+        subpkts = [bytes(pkt) for pkt in self.packets]
         # Build the offset lists
         current_offset = 2 + 2 * len(subpkts)
         offsets = []
         for p in subpkts:
             offsets.append(struct.pack("<H", current_offset))
             current_offset += len(p)
-        return struct.pack("<H", len(subpkts)) + "".join(offsets) + "".join(subpkts)
+        return (
+            struct.pack("<H", len(subpkts))
+            + b"".join(offsets)
+            + b"".join(subpkts)
+        )
 
 
 class CIP_ReqConnectionManager(scapy_all.Packet):
