@@ -445,11 +445,17 @@ class CIP_ConnectionParam(scapy_all.Packet):
         return struct.pack('>H', int(b)) + s[2:]
 
     def do_build(self):
-        p = ''
-        return p
+        # scapy's PacketField expects ``bytes`` on Python 3 when serializing the
+        # nested ``CIP_ConnectionParam`` structure.  The original implementation
+        # returned an empty ``str`` instance which relied on the Python 2
+        # equivalence between ``str`` and ``bytes``.  Returning a native
+        # ``bytes`` object keeps the behaviour identical while avoiding
+        # ``TypeError`` when higher-level packets concatenate the serialized
+        # fragments.
+        return b""
 
     def extract_padding(self, s):
-        return '', s
+        return b"", s
 
 
 class CIP_ReqForwardOpen(scapy_all.Packet):
@@ -521,14 +527,18 @@ class CIP_MultipleServicePacket(scapy_all.Packet):
     def do_build(self):
         """Build the packet by concatenating packets and building the offsets list"""
         # Build the sub packets
-        subpkts = [str(pkt) for pkt in self.packets]
+        subpkts = [bytes(pkt) for pkt in self.packets]
         # Build the offset lists
         current_offset = 2 + 2 * len(subpkts)
         offsets = []
         for p in subpkts:
             offsets.append(struct.pack("<H", current_offset))
             current_offset += len(p)
-        return struct.pack("<H", len(subpkts)) + "".join(offsets) + "".join(subpkts)
+        return (
+            struct.pack("<H", len(subpkts))
+            + b"".join(offsets)
+            + b"".join(subpkts)
+        )
 
 
 class CIP_ReqConnectionManager(scapy_all.Packet):
