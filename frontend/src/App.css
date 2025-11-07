@@ -356,6 +356,17 @@ button:hover:not(:disabled) {
   gap: 0.5rem;
 }
 
+.control-button-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.compact-button {
+  padding: 0.35rem 0.9rem;
+  font-size: 0.85rem;
+}
+
 .read-only-row {
   background-color: rgba(226, 232, 240, 0.35);
 }
