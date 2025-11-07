@@ -116,10 +116,13 @@ approach reuses the same environment variables documented above.
   executed offline by enabling the fixtures described in the README. The
   repository’s unit tests demonstrate how to mock PLC responses when performing
   multi-attribute updates.
-* **Sample CIP payload** – The repository ships with
+* **Sample CIP payloads** – The repository ships with
   [`docs/samples/plant_controller_example.xml`](../docs/samples/plant_controller_example.xml),
   a multi-assembly configuration that can be uploaded through the web UI drop
-  zone for local experiments.
+  zone for local experiments, and
+  [`docs/samples/generic_adapter_template.xml`](../docs/samples/generic_adapter_template.xml),
+  a ready-to-use EtherNet/IP adapter template illustrating implicit Class 1
+  connections, assemblies, and QoS defaults for simulators.
 * **Frontend refresh** – Run `npm install && npm run build` in `frontend/` after
   UI changes. The Dockerfile performs these steps automatically for production
   images.
