@@ -5,8 +5,9 @@
            schemaVersion="1.0">
 
   <!-- ========= Identity (Class 0x01) ========= -->
+  <!-- I/O device -->
   <Identity vendorId="9999"
-            productType="0x10"         <!-- I/O device -->
+            productType="0x10"
             productCode="100"
             majorRev="1" minorRev="2"
             serialNumber="0x12345678"
@@ -52,22 +53,24 @@
                 productionInhibitUS="0">
 
       <!-- Originator->Target (O→T) (usually controller → adapter outputs) -->
-      <O2T rpiUS="10000"              <!-- 10 ms -->
+      <!-- 10 ms RPI; Output Assembly instance 102; optional connectionId when pre-assigned -->
+      <O2T rpiUS="10000"
            sizeBytes="32"
            format="Fixed"
-           connectionPoint="102"      <!-- Output Assembly instance -->
-           connectionId="0x12345678"  <!-- optional: if you pre-assign in sim -->
+           connectionPoint="102"
+           connectionId="0x12345678"
            safety="false"/>
 
       <!-- Target->Originator (T→O) (adapter → controller inputs) -->
+      <!-- Input Assembly instance 101; optional connectionId; multicastAddr used when multicast=true -->
       <T2O rpiUS="10000"
            sizeBytes="32"
            format="Fixed"
-           connectionPoint="101"      <!-- Input Assembly instance -->
-           connectionId="0x87654321"  <!-- optional -->
+           connectionPoint="101"
+           connectionId="0x87654321"
            safety="false"
            multicast="true"
-           multicastAddr="239.192.1.10"/>  <!-- if multicast=true -->
+           multicastAddr="239.192.1.10"/>
 
       <!-- Optional Configuration assembly -->
       <Config connectionPoint="103" sizeBytes="16"/>

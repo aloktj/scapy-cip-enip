@@ -1,10 +1,17 @@
 """Utilities to parse PLC configuration XML documents."""
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict, Iterable, Iterator, List, Mapping, Optional, Sequence, Tuple
-import xml.etree.ElementTree as ET
+
+from defusedxml import ElementTree as ET
+from defusedxml.common import DefusedXmlException
+
+try:  # pragma: no cover - exercised indirectly in tests
+    import xmlschema
+except Exception:  # pragma: no cover - protects optional dependency import errors
+    xmlschema = None
 
 from cip import CIP_Path
 
@@ -31,8 +38,17 @@ _ALLOWED_ROOT_TAGS = {
 }
 
 
-_COMMENT_PATTERN_TEXT = re.compile(r"<!--.*?-->", re.DOTALL)
-_COMMENT_PATTERN_BYTES = re.compile(rb"<!--.*?-->", re.DOTALL)
+
+_SCHEMA_FILENAME = "config_schema.xsd"
+_SCHEMA_PATH = Path(__file__).with_name(_SCHEMA_FILENAME)
+
+if xmlschema is not None:
+    try:
+        _CONFIGURATION_SCHEMA = xmlschema.XMLSchema(str(_SCHEMA_PATH))
+    except Exception:  # pragma: no cover - schema load errors are surfaced during validation
+        _CONFIGURATION_SCHEMA = None
+else:  # pragma: no cover - schema validation disabled when dependency missing
+    _CONFIGURATION_SCHEMA = None
 
 
 class ConfigurationError(Exception):
@@ -118,8 +134,10 @@ def load_configuration(xml_payload: str | bytes) -> DeviceConfiguration:
     sanitized_payload = _sanitize_xml_payload(xml_payload)
     try:
         root = ET.fromstring(sanitized_payload)
-    except ET.ParseError as exc:
+    except (ET.ParseError, DefusedXmlException) as exc:
         raise ConfigurationParseError("Malformed XML payload") from exc
+
+    _validate_against_schema(root)
 
     raw_root_tag = root.tag
     if isinstance(raw_root_tag, str) and "}" in raw_root_tag:
@@ -145,9 +163,55 @@ def load_configuration(xml_payload: str | bytes) -> DeviceConfiguration:
 
 def _sanitize_xml_payload(xml_payload: str | bytes) -> str | bytes:
     if isinstance(xml_payload, (bytes, bytearray)):
-        payload_bytes = bytes(xml_payload)
-        return _COMMENT_PATTERN_BYTES.sub(b"", payload_bytes)
-    return _COMMENT_PATTERN_TEXT.sub("", xml_payload)
+        return bytes(xml_payload)
+    return xml_payload
+
+
+def _validate_against_schema(root: ET.Element) -> None:
+    if _CONFIGURATION_SCHEMA is None:
+        return
+
+    normalized_root = _clone_without_namespace(root)
+    if normalized_root is None:
+        return
+
+    tree = ET.ElementTree(normalized_root)
+
+    try:
+        _CONFIGURATION_SCHEMA.validate(tree)
+    except Exception as exc:
+        raise ConfigurationParseError("Configuration XML does not match schema") from exc
+
+
+def _clone_without_namespace(node: ET.Element) -> Optional[ET.Element]:
+    tag = getattr(node, "tag", None)
+    if not isinstance(tag, str):
+        return None
+
+    clone = ET.Element(_local_name(tag))
+    for key, value in node.attrib.items():
+        clone.set(_local_name(key), value)
+
+    text = node.text
+    if text:
+        clone.text = text
+
+    tail = node.tail
+    if tail:
+        clone.tail = tail
+
+    for child in node:
+        child_clone = _clone_without_namespace(child)
+        if child_clone is not None:
+            clone.append(child_clone)
+
+    return clone
+
+
+def _local_name(tag: str) -> str:
+    if "}" in tag:
+        return tag.rsplit("}", 1)[-1]
+    return tag
 
 
 def _parse_identity(node: Optional[ET.Element]) -> DeviceIdentity:
