@@ -74,7 +74,7 @@ class PLCClient(object):
             # Open an Ethernet/IP session
             sessionpkt = ENIP_TCP() / ENIP_RegisterSession()
             if self.sock is not None:
-                self.sock.send(str(sessionpkt))
+                self.sock.send(bytes(sessionpkt))
                 reply_pkt = self.recv_enippkt()
                 self.session_id = reply_pkt.session
 
@@ -92,7 +92,7 @@ class PLCClient(object):
             ENIP_SendUnitData_Item() / cippkt
         ])
         if self.sock is not None:
-            self.sock.send(str(enippkt))
+            self.sock.send(bytes(enippkt))
 
     def send_rr_cm_cip(self, cippkt):
         """Encapsulate the CIP packet into a ConnectionManager packet"""
@@ -117,7 +117,7 @@ class PLCClient(object):
         ])
         self.sequence += 1
         if self.sock is not None:
-            self.sock.send(str(enippkt))
+            self.sock.send(bytes(enippkt))
 
     def recv_enippkt(self):
         """Receive an ENIP packet from the TCP socket"""
@@ -175,7 +175,7 @@ class PLCClient(object):
         if cippkt.status[0].status != 0:
             logger.error("CIP get attribute error: %r", cippkt.status[0])
             return
-        resp_getattrlist = str(cippkt.payload)
+        resp_getattrlist = bytes(cippkt.payload)
         assert resp_getattrlist[:2] == b'\x01\x00'  # Attribute count must be 1
         assert struct.unpack('<H', resp_getattrlist[2:4])[0] == attr  # First attribute
         assert resp_getattrlist[4:6] == b'\x00\x00'  # Status
@@ -218,7 +218,7 @@ class PLCClient(object):
             resppkt = self.recv_enippkt()
 
             # Decode a list of 32-bit integers
-            data = str(resppkt[CIP].payload)
+            data = bytes(resppkt[CIP].payload)
             for i in range(0, len(data), 4):
                 inst_list.append(struct.unpack('<I', data[i:i + 4])[0])
 
@@ -247,7 +247,7 @@ class PLCClient(object):
             resppkt = self.recv_enippkt()
 
             cipstatus = resppkt[CIP].status[0].status
-            received_data = str(resppkt[CIP].payload)
+            received_data = bytes(resppkt[CIP].payload)
             if cipstatus == 0:
                 # Success
                 assert len(received_data) == remaining_size
@@ -276,11 +276,11 @@ class PLCClient(object):
         elif len(attrval) == 4:
             # 4-byte integer
             return hex(struct.unpack('<I', attrval)[0])
-        elif all(x == b'\0' for x in attrval):
+        elif all(x == 0 for x in attrval):
             # a series of zeros
             return '[{} zeros]'.format(len(attrval))
         # format in hexadecimal the content of attrval
-        return ''.join('{:2x}'.format(ord(x)) for x in attrval)
+        return ''.join('{:02x}'.format(x) for x in attrval)
 
     # -- Offline helpers -------------------------------------------------
 
