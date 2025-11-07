@@ -4,7 +4,11 @@ from pathlib import Path
 
 import pytest
 
-from services.config_loader import ConfigurationValidationError, load_configuration
+from services.config_loader import (
+    ConfigurationParseError,
+    ConfigurationValidationError,
+    load_configuration,
+)
 
 
 CIP_WITH_MEMBER_IDS = """
@@ -103,3 +107,29 @@ def test_parse_template_style_assembly_attributes():
     settings = assemblies["Settings"]
     assert settings.instance_id == 0x66
     assert settings.direction == "configuration"
+
+
+def test_load_configuration_rejects_xml_bomb():
+    payload = """<?xml version='1.0'?>
+    <!DOCTYPE lolz [
+      <!ENTITY lol "lol">
+      <!ENTITY lol1 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;">
+      <!ENTITY lol2 "&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;">
+      <!ENTITY lol3 "&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;">
+      <!ENTITY lol4 "&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;">
+    ]>
+    <lolz>&lol4;</lolz>
+    """
+
+    with pytest.raises(ConfigurationParseError):
+        load_configuration(payload)
+
+
+def test_load_configuration_rejects_external_entities():
+    payload = """<?xml version='1.0'?>
+    <!DOCTYPE lolz [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>
+    <cip>&xxe;</cip>
+    """
+
+    with pytest.raises(ConfigurationParseError):
+        load_configuration(payload)

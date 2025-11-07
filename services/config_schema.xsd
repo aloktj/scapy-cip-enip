@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           elementFormDefault="qualified"
+           attributeFormDefault="unqualified">
+  <xs:element name="device" type="DeviceConfigurationType"/>
+  <xs:element name="Device" type="DeviceConfigurationType"/>
+  <xs:element name="deviceconfiguration" type="DeviceConfigurationType"/>
+  <xs:element name="DeviceConfiguration" type="DeviceConfigurationType"/>
+  <xs:element name="plc" type="DeviceConfigurationType"/>
+  <xs:element name="Plc" type="DeviceConfigurationType"/>
+  <xs:element name="cip" type="DeviceConfigurationType"/>
+  <xs:element name="Cip" type="DeviceConfigurationType"/>
+  <xs:element name="CIPDevice" type="CIPDeviceType"/>
+
+  <xs:complexType name="DeviceConfigurationType">
+    <xs:sequence minOccurs="0" maxOccurs="unbounded">
+      <xs:choice>
+        <xs:element name="identity" type="IdentityType"/>
+        <xs:element name="Identity" type="IdentityType"/>
+        <xs:element name="assemblies" type="AssembliesType"/>
+        <xs:element name="Assemblies" type="AssembliesType"/>
+        <xs:any processContents="lax"/>
+      </xs:choice>
+    </xs:sequence>
+    <xs:anyAttribute processContents="lax"/>
+  </xs:complexType>
+
+  <xs:complexType name="IdentityType">
+    <xs:sequence minOccurs="0" maxOccurs="unbounded">
+      <xs:any processContents="lax"/>
+    </xs:sequence>
+    <xs:anyAttribute processContents="lax"/>
+  </xs:complexType>
+
+  <xs:complexType name="AssembliesType">
+    <xs:sequence minOccurs="0" maxOccurs="unbounded">
+      <xs:choice>
+        <xs:element name="assembly" type="AssemblyType"/>
+        <xs:element name="Assembly" type="AssemblyType"/>
+        <xs:any processContents="lax"/>
+      </xs:choice>
+    </xs:sequence>
+    <xs:anyAttribute processContents="lax"/>
+  </xs:complexType>
+
+  <xs:complexType name="AssemblyType">
+    <xs:sequence minOccurs="0" maxOccurs="unbounded">
+      <xs:any processContents="lax"/>
+    </xs:sequence>
+    <xs:attribute name="name" type="xs:string" use="optional"/>
+    <xs:attribute name="alias" type="xs:string" use="optional"/>
+    <xs:attribute name="class" type="xs:string" use="optional"/>
+    <xs:attribute name="class_id" type="xs:string" use="optional"/>
+    <xs:attribute name="classId" type="xs:string" use="optional"/>
+    <xs:attribute name="connectionPoint" type="xs:string" use="optional"/>
+    <xs:attribute name="dir" type="xs:string" use="optional"/>
+    <xs:attribute name="direction" type="xs:string" use="optional"/>
+    <xs:attribute name="id" type="xs:string" use="optional"/>
+    <xs:attribute name="instance" type="xs:string" use="optional"/>
+    <xs:attribute name="instanceId" type="xs:string" use="optional"/>
+    <xs:attribute name="instance_id" type="xs:string" use="optional"/>
+    <xs:attribute name="size" type="xs:string" use="optional"/>
+    <xs:attribute name="sizeBytes" type="xs:string" use="optional"/>
+    <xs:attribute name="byteLength" type="xs:string" use="optional"/>
+    <xs:attribute name="byte_length" type="xs:string" use="optional"/>
+    <xs:attribute name="bytelength" type="xs:string" use="optional"/>
+    <xs:attribute name="bytesize" type="xs:string" use="optional"/>
+    <xs:attribute name="size_bytes" type="xs:string" use="optional"/>
+    <xs:anyAttribute processContents="lax"/>
+  </xs:complexType>
+
+  <xs:complexType name="CIPDeviceType">
+    <xs:sequence minOccurs="0" maxOccurs="unbounded">
+      <xs:any processContents="lax"/>
+    </xs:sequence>
+    <xs:anyAttribute processContents="lax"/>
+  </xs:complexType>
+</xs:schema>

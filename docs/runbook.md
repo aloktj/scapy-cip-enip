@@ -123,6 +123,12 @@ approach reuses the same environment variables documented above.
   [`docs/samples/generic_adapter_template.xml`](../docs/samples/generic_adapter_template.xml),
   a ready-to-use EtherNet/IP adapter template illustrating implicit Class 1
   connections, assemblies, and QoS defaults for simulators.
+* **Configuration uploads** – XML payloads posted to the upload APIs are parsed
+  with hardened libraries and validated against the bundled schema before any
+  PLC metadata is extracted. Documents with malformed structure, untrusted
+  entity expansions, or other schema violations are rejected with a
+  `ConfigurationParseError`, so make sure new templates are schema-compliant
+  before deploying them.
 * **Frontend refresh** – Run `npm install && npm run build` in `frontend/` after
   UI changes. The Dockerfile performs these steps automatically for production
   images.
