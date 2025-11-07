@@ -389,6 +389,22 @@ class CIP(scapy_all.Packet):
                 p = p[0:1] + b"\0\0\0" + p[1:]
         return p + pay
 
+    def post_dissect(self, s):
+        """Ensure responses always expose a status entry."""
+        if not self.status:
+            is_response = self.direction in (1, "response")
+            if not is_response:
+                raw = getattr(self, "original", b"") or b""
+                if raw:
+                    is_response = bool(raw[0] & 0x80)
+            if not is_response:
+                return scapy_all.Packet.post_dissect(self, s)
+            # Some devices omit the general status bytes when no error occurred.
+            # Normalize those responses to expose a success status so callers can
+            # consistently rely on ``status[0]`` existing.
+            self.status = [CIP_ResponseStatus()]  # type: ignore[list-item]
+        return scapy_all.Packet.post_dissect(self, s)
+
 
 class _CIPMSPPacketList(scapy_all.PacketListField):
     """The list of packets in a CIP MultipleServicePacket message"""
