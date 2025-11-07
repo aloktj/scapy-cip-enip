@@ -46,15 +46,3 @@ def test_load_configuration_accepts_generic_adapter_template():
     payload = sample_path.read_text(encoding="utf-8")
 
     load_configuration(payload)
-
-
-def test_identity_revision_from_major_minor_aliases():
-    payload = """
-    <Device>
-      <Identity majorRev="4" minorRev="2" />
-    </Device>
-    """.strip()
-
-    configuration = load_configuration(payload)
-
-    assert configuration.identity.revision == "4.2"

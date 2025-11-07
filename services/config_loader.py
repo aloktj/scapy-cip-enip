@@ -22,6 +22,15 @@ __all__ = [
 ]
 
 
+_ALLOWED_ROOT_TAGS = {
+    "device": "Device",
+    "deviceconfiguration": "DeviceConfiguration",
+    "plc": "Plc",
+    "cip": "Cip",
+    "cipdevice": "CIPDevice",
+}
+
+
 _COMMENT_PATTERN_TEXT = re.compile(r"<!--.*?-->", re.DOTALL)
 _COMMENT_PATTERN_BYTES = re.compile(rb"<!--.*?-->", re.DOTALL)
 
@@ -115,12 +124,15 @@ def load_configuration(xml_payload: str | bytes) -> DeviceConfiguration:
     root_tag = root.tag
     if isinstance(root_tag, str) and "}" in root_tag:
         root_tag = root_tag.rsplit("}", 1)[-1]
-    normalized_root_tag = _normalize_key(root_tag)
+    normalized_root_tag = _normalize_key(root_tag if isinstance(root_tag, str) else "")
 
-    if normalized_root_tag not in {"device", "deviceconfiguration", "plc", "cip", "cipdevice"}:
-        raise ConfigurationValidationError(
-            "Root element must be <Device>, <DeviceConfiguration>, <Plc>, <Cip>, or <CIPDevice>"
-        )
+    if normalized_root_tag not in _ALLOWED_ROOT_TAGS:
+        allowed = [f"<{name}>" for name in _ALLOWED_ROOT_TAGS.values()]
+        if len(allowed) > 1:
+            allowed_names = ", ".join(allowed[:-1]) + f", or {allowed[-1]}"
+        else:
+            allowed_names = allowed[0]
+        raise ConfigurationValidationError(f"Root element must be {allowed_names}")
 
     identity = _parse_identity(_find_child(root, "Identity"))
 
