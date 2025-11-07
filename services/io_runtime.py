@@ -20,7 +20,12 @@ from scapy import all as scapy_all
 
 from cip import CIP
 from .config_loader import AssemblyDefinition, AssemblyMember, DeviceConfiguration
-from .plc_manager import CIPStatus, PLCResponseError, PLCManager
+from .plc_manager import (
+    CIPStatus,
+    PLCConnectionError,
+    PLCResponseError,
+    PLCManager,
+)
 from plc import PLCClient
 
 __all__ = [
@@ -262,7 +267,12 @@ class IORuntime:
         if payload:
             cippkt /= scapy_all.Raw(load=payload)
         client.send_unit_cip(cippkt)
-        response = client.recv_enippkt()
+        try:
+            response = client.recv_enippkt()
+        except PLCConnectionError as exc:
+            raise PLCConnectionError(
+                "Socket closed while awaiting assembly write response"
+            ) from exc
         if response is None:
             raise PLCResponseError("No response received for assembly write")
         cip_layer = response[CIP]

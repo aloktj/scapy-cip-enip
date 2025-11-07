@@ -26,6 +26,7 @@ from services.plc_manager import (
     AssemblySnapshot,
     CIPStatus,
     ConnectionStatus,
+    PLCConnectionError,
     PLCManager,
     PLCManagerError,
     PLCResponseError,
@@ -172,7 +173,12 @@ class SessionOrchestrator:
         cippkt = CIP(service=4, path=path) / payload
         with handle.io_lock:
             handle.client.send_rr_cm_cip(cippkt)
-            response = handle.client.recv_enippkt()
+            try:
+                response = handle.client.recv_enippkt()
+            except PLCConnectionError as exc:
+                raise PLCConnectionError(
+                    "Socket closed while waiting for attribute write response"
+                ) from exc
         if response is None:
             raise PLCResponseError("No response received for attribute write")
         cip_resp = response[CIP]
@@ -203,7 +209,10 @@ class SessionOrchestrator:
         sender = self._resolve_sender(handle.client, transport)
         with handle.io_lock:
             sender(cippkt)
-            response = handle.client.recv_enippkt()
+            try:
+                response = handle.client.recv_enippkt()
+            except PLCConnectionError as exc:
+                raise PLCConnectionError("Socket closed while waiting for command response") from exc
         if response is None:
             raise PLCResponseError("No response received for command")
         cip_resp = response[CIP]
