@@ -48,13 +48,26 @@ logger = logging.getLogger(__name__)
 class PLCClient(object):
     """Handle all the state of an Ethernet/IP session with a PLC"""
 
-    def __init__(self, plc_addr, plc_port=44818):
+    def __init__(
+        self,
+        plc_addr,
+        plc_port=44818,
+        *,
+        connect_timeout=None,
+        read_timeout=None,
+        write_timeout=None,
+    ):
         self._offline = bool(NO_NETWORK)
         self._offline_store: Dict[Tuple[int, int], MutableMapping[int, bytes]] = {}
+        self._read_timeout = read_timeout
+        self._write_timeout = write_timeout
 
         if not self._offline:
             try:
-                self.sock = socket.create_connection((plc_addr, plc_port))
+                self.sock = socket.create_connection(
+                    (plc_addr, plc_port), timeout=connect_timeout
+                )
+                self.sock.settimeout(read_timeout)
             except socket.error as exc:
                 logger.warning("socket error: %s", exc)
                 logger.warning("Continuing without sending anything")
@@ -93,7 +106,7 @@ class PLCClient(object):
             ENIP_SendUnitData_Item() / cippkt
         ])
         if self.sock is not None:
-            self.sock.send(bytes(enippkt))
+            self._sendall(bytes(enippkt), "sending CIP request")
 
     def send_rr_cm_cip(self, cippkt):
         """Encapsulate the CIP packet into a ConnectionManager packet"""
@@ -118,7 +131,7 @@ class PLCClient(object):
         ])
         self.sequence += 1
         if self.sock is not None:
-            self.sock.send(bytes(enippkt))
+            self._sendall(bytes(enippkt), "sending connected CIP request")
 
     def recv_enippkt(self):
         """Receive an ENIP packet from the TCP socket"""
@@ -127,7 +140,7 @@ class PLCClient(object):
         header = bytearray()
         expected_header = 24
         while len(header) < expected_header:
-            chunk = self.sock.recv(expected_header - len(header))
+            chunk = self._recv(expected_header - len(header), "waiting for ENIP header")
             if not chunk:
                 raise PLCConnectionError("Socket closed while reading ENIP header")
             header.extend(chunk)
@@ -135,7 +148,7 @@ class PLCClient(object):
         payload_length = struct.unpack_from("<H", header, 2)[0]
         payload = bytearray()
         while len(payload) < payload_length:
-            chunk = self.sock.recv(payload_length - len(payload))
+            chunk = self._recv(payload_length - len(payload), "waiting for ENIP payload")
             if not chunk:
                 raise PLCConnectionError("Socket closed before ENIP payload was fully received")
             payload.extend(chunk)
@@ -143,6 +156,37 @@ class PLCClient(object):
         pktbytes = bytes(header + payload)
         pkt = ENIP_TCP(pktbytes)
         return pkt
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _restore_read_timeout(self):
+        if self.sock is None:
+            return
+        self.sock.settimeout(self._read_timeout)
+
+    def _sendall(self, data: bytes, context: str) -> None:
+        if self.sock is None:
+            return
+        if self._write_timeout is not None:
+            self.sock.settimeout(self._write_timeout)
+        try:
+            self.sock.sendall(data)
+        except socket.timeout as exc:
+            raise PLCConnectionError(f"Timed out while {context}") from exc
+        finally:
+            self._restore_read_timeout()
+
+    def _recv(self, size: int, context: str) -> bytes:
+        if self.sock is None:
+            return b""
+        if self._read_timeout is not None:
+            self.sock.settimeout(self._read_timeout)
+        try:
+            return self.sock.recv(size)
+        except socket.timeout as exc:
+            raise PLCConnectionError(f"Timed out while {context}") from exc
 
     def forward_open(self):
         """Send a forward open request"""

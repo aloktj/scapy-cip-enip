@@ -176,9 +176,7 @@ class SessionOrchestrator:
             try:
                 response = handle.client.recv_enippkt()
             except PLCConnectionError as exc:
-                raise PLCConnectionError(
-                    "Socket closed while waiting for attribute write response"
-                ) from exc
+                raise PLCConnectionError(f"Attribute write failed: {exc}") from exc
         if response is None:
             raise PLCResponseError("No response received for attribute write")
         cip_resp = response[CIP]
@@ -212,7 +210,7 @@ class SessionOrchestrator:
             try:
                 response = handle.client.recv_enippkt()
             except PLCConnectionError as exc:
-                raise PLCConnectionError("Socket closed while waiting for command response") from exc
+                raise PLCConnectionError(f"Command execution failed: {exc}") from exc
         if response is None:
             raise PLCResponseError("No response received for command")
         cip_resp = response[CIP]
