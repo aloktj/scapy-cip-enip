@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CIPDevice xmlns="urn:yourco:cip-sim:1.0"
+           name="GenericEtherNetIPAdapter"
+           profile="Generic-IO-Adapter"
+           schemaVersion="1.0">
+
+  <!-- ========= Identity (Class 0x01) ========= -->
+  <Identity vendorId="9999"
+            productType="0x10"         <!-- I/O device -->
+            productCode="100"
+            majorRev="1" minorRev="2"
+            serialNumber="0x12345678"
+            productName="MyCIPDevice"/>
+
+  <!-- ========= Network Interfaces ========= -->
+  <Network>
+    <EthernetLink mac="02:11:22:33:44:55" fullDuplex="true" speedMbps="100"/>
+    <TCPIP ip="192.168.1.50" netmask="255.255.255.0" gateway="192.168.1.1" hostname="cip-sim"/>
+  </Network>
+
+  <!-- ========= QoS (Class 0x48) / DSCP Defaults ========= -->
+  <QoS dscpDefault="0x18" dscpExplicit="0x18" dscpHigh="0x2E" dscpSched="0x08"/>
+
+  <!-- ========= Objects & Assemblies ========= -->
+  <Objects>
+    <!-- Assembly Object (Class 0x04) instances -->
+    <!-- Tip: ids are Instance numbers -->
+    <Assemblies>
+      <Assembly id="101" name="InputAssembly"  direction="T2O" sizeBytes="32" dataType="byte-array"/>
+      <Assembly id="102" name="OutputAssembly" direction="O2T" sizeBytes="32" dataType="byte-array"/>
+      <Assembly id="103" name="ConfigAssembly" direction="CONFIG" sizeBytes="16" dataType="byte-array"/>
+    </Assemblies>
+
+    <!-- You can add vendor/application objects here if your simulator exposes them -->
+    <VendorObjects>
+      <!-- Example vendor object -->
+      <!-- <Object classHex="0x64" name="DiagObject">
+           <Attribute id="1" name="StatusWord" type="UINT" initial="0"/>
+         </Object> -->
+    </VendorObjects>
+  </Objects>
+
+  <!-- ========= Class 1 (Implicit I/O) Connections ========= -->
+  <!-- Each connection defines how UDP I/O is produced/consumed -->
+  <Connections>
+    <Connection name="DefaultIO"
+                type="ExclusiveOwner"
+                transport="Class1"
+                trigger="Cyclic"
+                priority="Low"
+                connectionType="PointToPoint"
+                productionInhibitUS="0">
+
+      <!-- Originator->Target (O→T) (usually controller → adapter outputs) -->
+      <O2T rpiUS="10000"              <!-- 10 ms -->
+           sizeBytes="32"
+           format="Fixed"
+           connectionPoint="102"      <!-- Output Assembly instance -->
+           connectionId="0x12345678"  <!-- optional: if you pre-assign in sim -->
+           safety="false"/>
+
+      <!-- Target->Originator (T→O) (adapter → controller inputs) -->
+      <T2O rpiUS="10000"
+           sizeBytes="32"
+           format="Fixed"
+           connectionPoint="101"      <!-- Input Assembly instance -->
+           connectionId="0x87654321"  <!-- optional -->
+           safety="false"
+           multicast="true"
+           multicastAddr="239.192.1.10"/>  <!-- if multicast=true -->
+
+      <!-- Optional Configuration assembly -->
+      <Config connectionPoint="103" sizeBytes="16"/>
+
+      <!-- Redundancy / timeout tuning -->
+      <Timeouts timeoutMultiplier="4" expectedPacketRateUS="10000"/>
+
+      <!-- Optional run/idle header and sequence flags -->
+      <Options runIdleHeader="true" sequenceCount="true"/>
+    </Connection>
+
+    <!-- Add more connections (e.g., ListenOnly, InputOnly) if you need -->
+    <!--
+    <Connection name="ListenOnly"
+                type="ListenOnly"
+                transport="Class1"
+                trigger="Cyclic"
+                priority="Low"
+                connectionType="Multicast">
+      <T2O rpiUS="20000" sizeBytes="32" format="Fixed" connectionPoint="101" multicast="true"/>
+    </Connection>
+    -->
+  </Connections>
+
+  <!-- ========= Explicit Messaging Helpers (Optional) ========= -->
+  <!-- Lets your simulator auto-map common explicit requests -->
+  <Explicit>
+    <!-- Shortcut paths for common requests (Class/Instance/Attribute) -->
+    <Path name="VendorId" classHex="0x01" instance="1" attribute="1"/>
+    <Path name="DeviceType" classHex="0x01" instance="1" attribute="2"/>
+    <Path name="ProductCode" classHex="0x01" instance="1" attribute="3"/>
+    <Path name="Revision" classHex="0x01" instance="1" attribute="4"/>
+    <Path name="SerialNumber" classHex="0x01" instance="1" attribute="6"/>
+
+    <!-- Default service timeouts / behavior -->
+    <Defaults requestTimeoutMS="2000" retries="1"/>
+
+    <!-- Optional canned responses (handy for a lightweight sim) -->
+    <!--
+    <CannedResponse service="GetAttributeSingle" pathRef="VendorId" dataHex="0x27 0x0F"/>
+    -->
+  </Explicit>
+
+  <!-- ========= Scapy Hints (non-functional, for your loader) ========= -->
+  <Hints>
+    <Endianess byteOrder="little"/>
+    <PathEncoding packMode="8bitSegments"/> <!-- your parser can emit 0x20/0x24/0x30 segments -->
+  </Hints>
+</CIPDevice>
