@@ -200,9 +200,9 @@ def _parse_assemblies(nodes: Sequence[ET.Element]) -> List[AssemblyDefinition]:
     aliases: Dict[str, ET.Element] = {}
     for node in nodes:
         attrs = _normalize_attributes(node)
-        alias = _get_attr(attrs, "name", "alias", "id")
+        alias = _get_attr(attrs, "name", "alias")
         if alias is None:
-            alias_node = _find_child(node, "Name")
+            alias_node = _find_child(node, "Name", "Alias")
             alias = _text_if_present(alias_node)
         if not alias:
             raise ConfigurationValidationError(
@@ -234,15 +234,19 @@ def _parse_assemblies(nodes: Sequence[ET.Element]) -> List[AssemblyDefinition]:
             raise ConfigurationValidationError(
                 f"Assembly '{alias}' is missing required direction"
             )
-        direction = direction_raw.strip().lower()
-        if direction in {"config", "configuration"}:
-            direction = "configuration"
-        elif direction in {"t2o", "input", "in"}:
-            direction = "input"
-        elif direction in {"o2t", "output", "out"}:
-            direction = "output"
-        elif direction in {"inout", "io"}:
-            direction = "bidirectional"
+        direction_token = direction_raw.strip().lower()
+        direction = {
+            "config": "configuration",
+            "configuration": "configuration",
+            "t2o": "input",
+            "input": "input",
+            "in": "input",
+            "o2t": "output",
+            "output": "output",
+            "out": "output",
+            "inout": "bidirectional",
+            "io": "bidirectional",
+        }.get(direction_token, direction_token)
         if direction not in {"input", "output", "configuration", "bidirectional"}:
             raise ConfigurationValidationError(
                 f"Assembly '{alias}' has unsupported direction '{direction}'"
@@ -253,8 +257,11 @@ def _parse_assemblies(nodes: Sequence[ET.Element]) -> List[AssemblyDefinition]:
                 "size",
                 "length",
                 "bytelength",
+                "byte_length",
                 "sizebytes",
+                "size_bytes",
                 "bytesize",
+                "byte_size",
             )
         )
         members = _parse_members(node)
@@ -324,7 +331,17 @@ def _parse_member_elements(nodes: Iterable[ET.Element]) -> List[AssemblyMember]:
                 _get_attr(_normalize_attributes(scalar), "offset", "byte_offset", "byteoffset")
             )
         size = _parse_optional_int(
-            _get_attr(attrs, "size", "length", "byte_length", "bytelength")
+            _get_attr(
+                attrs,
+                "size",
+                "length",
+                "byte_length",
+                "bytelength",
+                "sizebytes",
+                "size_bytes",
+                "bytesize",
+                "byte_size",
+            )
         )
         if size is None and scalar is not None:
             size = _parse_optional_int(
@@ -334,6 +351,10 @@ def _parse_member_elements(nodes: Iterable[ET.Element]) -> List[AssemblyMember]:
                     "length",
                     "byte_length",
                     "bytelength",
+                    "sizebytes",
+                    "size_bytes",
+                    "bytesize",
+                    "byte_size",
                 )
             )
         if size is None and scalar is not None:
@@ -372,7 +393,17 @@ def _parse_scalar_members(node: ET.Element) -> List[AssemblyMember]:
             _get_attr(attrs, "offset", "byte_offset", "byteoffset")
         )
         size = _parse_optional_int(
-            _get_attr(attrs, "size", "length", "byte_length", "bytelength")
+            _get_attr(
+                attrs,
+                "size",
+                "length",
+                "byte_length",
+                "bytelength",
+                "sizebytes",
+                "size_bytes",
+                "bytesize",
+                "byte_size",
+            )
         )
         if size is None:
             bits = _parse_optional_int(_get_attr(attrs, "bit_length", "bits"))
