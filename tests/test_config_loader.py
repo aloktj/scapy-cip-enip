@@ -11,7 +11,7 @@ CIP_WITH_MEMBER_IDS = """
 <cip>
   <identity name="Sample PLC" />
   <assemblies>
-    <assembly id="InAssembly" dir="in" instanceId="0x64">
+    <assembly name="InAssembly" dir="in" instanceId="0x64">
       <members>
         <member>
           <usint id="MPU_CTCMSAlive" offset="0" />
@@ -21,8 +21,29 @@ CIP_WITH_MEMBER_IDS = """
         </member>
       </members>
     </assembly>
-    <assembly id="OutAssembly" dir="out" instanceId="0x65">
+    <assembly alias="OutAssembly" dir="out" instanceId="0x65">
       <bool id="StatusFlag" offset="0" />
+    </assembly>
+  </assemblies>
+</cip>
+""".strip()
+
+
+ASSEMBLY_TEMPLATE_ATTRIBUTES = """
+<cip>
+  <assemblies>
+    <assembly name="Inputs" connectionPoint="0x64" dir="t2o" sizeBytes="16">
+      <members>
+        <member>
+          <uint name="Word" />
+        </member>
+      </members>
+    </assembly>
+    <assembly alias="Outputs" id="0x65" dir="o2t" byteLength="4">
+      <bool name="Flag" />
+    </assembly>
+    <assembly name="Settings" instance="0x66" dir="config">
+      <members />
     </assembly>
   </assemblies>
 </cip>
@@ -63,3 +84,22 @@ def test_load_configuration_accepts_generic_adapter_template():
 def test_identity_revision_prefers_major_minor_attributes():
     configuration = load_configuration(IDENTITY_WITH_MAJOR_MINOR_REV)
     assert configuration.identity.revision == "1.2"
+
+
+def test_parse_template_style_assembly_attributes():
+    configuration = load_configuration(ASSEMBLY_TEMPLATE_ATTRIBUTES)
+    assemblies = {assembly.alias: assembly for assembly in configuration.assemblies}
+
+    inputs = assemblies["Inputs"]
+    assert inputs.instance_id == 0x64
+    assert inputs.direction == "input"
+    assert inputs.size == 16
+
+    outputs = assemblies["Outputs"]
+    assert outputs.instance_id == 0x65
+    assert outputs.direction == "output"
+    assert outputs.size == 4
+
+    settings = assemblies["Settings"]
+    assert settings.instance_id == 0x66
+    assert settings.direction == "configuration"
