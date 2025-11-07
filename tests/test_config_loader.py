@@ -29,6 +29,13 @@ CIP_WITH_MEMBER_IDS = """
 """.strip()
 
 
+IDENTITY_WITH_MAJOR_MINOR_REV = """
+<cip>
+  <identity majorRev="1" minorRev="2" />
+</cip>
+""".strip()
+
+
 def test_load_configuration_supports_member_id_names():
     configuration = load_configuration(CIP_WITH_MEMBER_IDS)
     assemblies = {assembly.alias: assembly for assembly in configuration.assemblies}
@@ -51,3 +58,8 @@ def test_load_configuration_accepts_generic_adapter_template():
         load_configuration(payload)
     except ConfigurationValidationError as exc:
         pytest.fail(f"Unexpected validation error: {exc}")
+
+
+def test_identity_revision_prefers_major_minor_attributes():
+    configuration = load_configuration(IDENTITY_WITH_MAJOR_MINOR_REV)
+    assert configuration.identity.revision == "1.2"

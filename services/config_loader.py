@@ -166,7 +166,15 @@ def _parse_identity(node: Optional[ET.Element]) -> DeviceIdentity:
     revision = _get_attr(attrs, "revision")
     if revision is None:
         major = _get_attr(attrs, "revision_major", "majorrev")
+        if major is None:
+            major = _text_if_present(
+                _find_child(node, "RevisionMajor", "MajorRevision", "MajorRev")
+            )
         minor = _get_attr(attrs, "revision_minor", "minorrev")
+        if minor is None:
+            minor = _text_if_present(
+                _find_child(node, "RevisionMinor", "MinorRevision", "MinorRev")
+            )
         if major and minor:
             revision = f"{major}.{minor}"
         else:
