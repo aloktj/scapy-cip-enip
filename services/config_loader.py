@@ -195,7 +195,7 @@ def _parse_assemblies(nodes: Sequence[ET.Element]) -> List[AssemblyDefinition]:
     aliases: Dict[str, ET.Element] = {}
     for node in nodes:
         attrs = _normalize_attributes(node)
-        alias = _get_attr(attrs, "alias", "id", "name")
+        alias = _get_attr(attrs, "name", "alias", "id")
         if alias is None:
             alias_node = _find_child(node, "Name")
             alias = _text_if_present(alias_node)
@@ -211,7 +211,14 @@ def _parse_assemblies(nodes: Sequence[ET.Element]) -> List[AssemblyDefinition]:
             class_id = 0x04
         else:
             class_id = _parse_int(class_id_str)
-        instance_id_str = _get_attr(attrs, "instance_id", "instanceid", "instance")
+        instance_id_str = _get_attr(
+            attrs,
+            "instance_id",
+            "instanceid",
+            "instance",
+            "connectionpoint",
+            "id",
+        )
         if instance_id_str is None:
             raise ConfigurationValidationError(
                 f"Assembly '{alias}' is missing required instance identifier"
@@ -223,11 +230,11 @@ def _parse_assemblies(nodes: Sequence[ET.Element]) -> List[AssemblyDefinition]:
                 f"Assembly '{alias}' is missing required direction"
             )
         direction = direction_raw.strip().lower()
-        if direction == "config":
+        if direction in {"config", "configuration"}:
             direction = "configuration"
-        elif direction == "in":
+        elif direction in {"t2o", "input", "in"}:
             direction = "input"
-        elif direction == "out":
+        elif direction in {"o2t", "output", "out"}:
             direction = "output"
         elif direction in {"inout", "io"}:
             direction = "bidirectional"
@@ -235,7 +242,16 @@ def _parse_assemblies(nodes: Sequence[ET.Element]) -> List[AssemblyDefinition]:
             raise ConfigurationValidationError(
                 f"Assembly '{alias}' has unsupported direction '{direction}'"
             )
-        size = _parse_optional_int(_get_attr(attrs, "size", "length", "bytelength"))
+        size = _parse_optional_int(
+            _get_attr(
+                attrs,
+                "size",
+                "length",
+                "bytelength",
+                "sizebytes",
+                "bytesize",
+            )
+        )
         members = _parse_members(node)
         assemblies.append(
             AssemblyDefinition(
