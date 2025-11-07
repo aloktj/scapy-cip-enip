@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from services.config_loader import load_configuration
 
 
@@ -37,3 +39,10 @@ def test_load_configuration_supports_member_id_names():
 
     output_members = assemblies["OutAssembly"].members
     assert [member.name for member in output_members] == ["StatusFlag"]
+
+
+def test_load_configuration_accepts_generic_adapter_template():
+    sample_path = Path("docs/samples/generic_adapter_template.xml")
+    payload = sample_path.read_text(encoding="utf-8")
+
+    load_configuration(payload)

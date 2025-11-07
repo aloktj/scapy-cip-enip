@@ -1,6 +1,7 @@
 """Utilities to parse PLC configuration XML documents."""
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Dict, Iterable, Iterator, List, Mapping, Optional, Sequence, Tuple
 import xml.etree.ElementTree as ET
@@ -19,6 +20,10 @@ __all__ = [
     "DeviceConfiguration",
     "load_configuration",
 ]
+
+
+_COMMENT_PATTERN_TEXT = re.compile(r"<!--.*?-->", re.DOTALL)
+_COMMENT_PATTERN_BYTES = re.compile(rb"<!--.*?-->", re.DOTALL)
 
 
 class ConfigurationError(Exception):
@@ -101,14 +106,20 @@ class DeviceConfiguration:
 def load_configuration(xml_payload: str | bytes) -> DeviceConfiguration:
     """Parse *xml_payload* into a :class:`DeviceConfiguration`."""
 
+    sanitized_payload = _sanitize_xml_payload(xml_payload)
     try:
-        root = ET.fromstring(xml_payload)
+        root = ET.fromstring(sanitized_payload)
     except ET.ParseError as exc:
         raise ConfigurationParseError("Malformed XML payload") from exc
 
-    if root.tag.lower() not in {"device", "deviceconfiguration", "plc", "cip"}:
+    root_tag = root.tag
+    if isinstance(root_tag, str) and "}" in root_tag:
+        root_tag = root_tag.rsplit("}", 1)[-1]
+    normalized_root_tag = _normalize_key(root_tag)
+
+    if normalized_root_tag not in {"device", "deviceconfiguration", "plc", "cip", "cipdevice"}:
         raise ConfigurationValidationError(
-            "Root element must be <Device>, <DeviceConfiguration>, <Plc>, or <Cip>"
+            "Root element must be <Device>, <DeviceConfiguration>, <Plc>, <Cip>, or <CIPDevice>"
         )
 
     identity = _parse_identity(_find_child(root, "Identity"))
@@ -121,6 +132,13 @@ def load_configuration(xml_payload: str | bytes) -> DeviceConfiguration:
     assemblies = _parse_assemblies(assembly_nodes)
 
     return DeviceConfiguration(identity=identity, assemblies=tuple(assemblies))
+
+
+def _sanitize_xml_payload(xml_payload: str | bytes) -> str | bytes:
+    if isinstance(xml_payload, (bytes, bytearray)):
+        payload_bytes = bytes(xml_payload)
+        return _COMMENT_PATTERN_BYTES.sub(b"", payload_bytes)
+    return _COMMENT_PATTERN_TEXT.sub("", xml_payload)
 
 
 def _parse_identity(node: Optional[ET.Element]) -> DeviceIdentity:
