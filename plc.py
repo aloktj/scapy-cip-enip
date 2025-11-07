@@ -32,6 +32,7 @@ from cip import CIP, CIP_Path, CIP_ReqConnectionManager, \
     CIP_ReqForwardClose, CIP_ReqGetAttributeList, CIP_ReqReadOtherTag
 from enip_tcp import ENIP_TCP, ENIP_SendUnitData, ENIP_SendUnitData_Item, \
     ENIP_ConnectionAddress, ENIP_ConnectionPacket, ENIP_RegisterSession, ENIP_SendRRData
+from errors import PLCConnectionError
 
 # Global switch to make it easy to test without sending anything
 NO_NETWORK = False
@@ -123,7 +124,23 @@ class PLCClient(object):
         """Receive an ENIP packet from the TCP socket"""
         if self.sock is None:
             return
-        pktbytes = self.sock.recv(2000)
+        header = bytearray()
+        expected_header = 24
+        while len(header) < expected_header:
+            chunk = self.sock.recv(expected_header - len(header))
+            if not chunk:
+                raise PLCConnectionError("Socket closed while reading ENIP header")
+            header.extend(chunk)
+
+        payload_length = struct.unpack_from("<H", header, 2)[0]
+        payload = bytearray()
+        while len(payload) < payload_length:
+            chunk = self.sock.recv(payload_length - len(payload))
+            if not chunk:
+                raise PLCConnectionError("Socket closed before ENIP payload was fully received")
+            payload.extend(chunk)
+
+        pktbytes = bytes(header + payload)
         pkt = ENIP_TCP(pktbytes)
         return pkt
 

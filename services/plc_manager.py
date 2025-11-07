@@ -25,17 +25,10 @@ from cip import (
     CIP_ReqReadOtherTag,
     CIP_ResponseStatus,
 )
+from errors import PLCConnectionError, PLCManagerError
 from plc import PLCClient
 
 logger = logging.getLogger(__name__)
-
-
-class PLCManagerError(Exception):
-    """Base class for all PLC management errors."""
-
-
-class PLCConnectionError(PLCManagerError):
-    """Raised when a socket level or session level connection fails."""
 
 
 class PLCCommunicationError(PLCManagerError):
@@ -272,7 +265,12 @@ class PLCManager:
         cippkt = CIP(service=0x54, path=CIP_Path(wordsize=2, path=b"\x20\x06\x24\x01"))
         cippkt /= CIP_ReqForwardOpen(path_wordsize=3, path=b"\x01\x00\x20\x02\x24\x01")
         client.send_rr_cip(cippkt)
-        response = client.recv_enippkt()
+        try:
+            response = client.recv_enippkt()
+        except PLCConnectionError as exc:
+            raise PLCConnectionError(
+                "Socket closed while waiting for Forward Open response"
+            ) from exc
         if response is None:
             raise PLCResponseError("No response received for Forward Open request")
         cip_resp = response[CIP]
@@ -294,7 +292,12 @@ class PLCManager:
         cippkt = CIP(service=0x4E, path=CIP_Path(wordsize=2, path=b"\x20\x06\x24\x01"))
         cippkt /= CIP_ReqForwardClose(path_wordsize=3, path=b"\x01\x00\x20\x02\x24\x01")
         client.send_rr_cip(cippkt)
-        response = client.recv_enippkt()
+        try:
+            response = client.recv_enippkt()
+        except PLCConnectionError as exc:
+            raise PLCConnectionError(
+                "Socket closed while waiting for Forward Close response"
+            ) from exc
         if response is None:
             raise PLCResponseError("No response received for Forward Close request")
         cip_resp = response[CIP]
@@ -326,7 +329,12 @@ class PLCManager:
             )
             cippkt /= CIP_ReqReadOtherTag(start=offset, length=remaining_size)
             client.send_rr_cm_cip(cippkt)
-            response = client.recv_enippkt()
+            try:
+                response = client.recv_enippkt()
+            except PLCConnectionError as exc:
+                raise PLCConnectionError(
+                    "Socket closed while reading tag data"
+                ) from exc
             if response is None:
                 raise PLCResponseError("No response received while reading tag")
 
