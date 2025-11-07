@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # Copyright (c) 2015 Nicolas Iooss, SUTD
 #
@@ -77,7 +77,7 @@ class ENIP_UDP(scapy_all.Packet):
     ]
 
     def extract_padding(self, p):
-        return "", p
+        return b"", p
 
 
 scapy_all.bind_layers(scapy_all.UDP, ENIP_UDP, sport=2222, dport=2222)
@@ -95,7 +95,7 @@ if __name__ == '__main__':
     ])
 
     # Build!
-    data = str(pkt)
+    data = bytes(pkt)
     pkt = scapy_all.Ether(data)
     pkt.show()
 
