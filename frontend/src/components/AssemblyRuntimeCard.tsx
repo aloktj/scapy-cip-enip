@@ -293,6 +293,31 @@ export function AssemblyRuntimeCard({
     [applyUpdate]
   );
 
+  const handlePresetValue = useCallback(
+    (member: AssemblyMemberValue, key: string, preset: "set" | "clear") => {
+      if (member.offset == null || member.size == null || member.size <= 0) {
+        return;
+      }
+      const size = member.size;
+      const offset = member.offset;
+      const maxValue = Math.pow(256, size) - 1;
+      const targetValue = preset === "set" ? maxValue : 0;
+      void applyUpdate(offset + size, (buffer) => {
+        let value = targetValue;
+        for (let index = 0; index < size; index += 1) {
+          buffer[offset + index] = value & 0xff;
+          value >>= 8;
+        }
+      });
+      setEditingValues((prev) => {
+        const nextValues = { ...prev };
+        delete nextValues[key];
+        return nextValues;
+      });
+    },
+    [applyUpdate]
+  );
+
   return (
     <div className="card assembly-card">
       <div className="assembly-card-header">
@@ -375,6 +400,11 @@ export function AssemblyRuntimeCard({
                   effectiveMember.int_value != null &&
                   effectiveMember.size != null &&
                   effectiveMember.offset != null;
+                const canPresetValue =
+                  isOutputAssembly &&
+                  effectiveMember.size != null &&
+                  effectiveMember.size > 0 &&
+                  effectiveMember.offset != null;
                 let controls: ReactNode = <span className="read-only-tag">Read only</span>;
                 if (!isOutputAssembly) {
                   controls = <span className="read-only-tag">Read only</span>;
@@ -423,6 +453,28 @@ export function AssemblyRuntimeCard({
                   }
                   if (!elements.length) {
                     elements.push(<span key={`${key}-no-editor`}>--</span>);
+                  }
+                  if (canPresetValue) {
+                    elements.push(
+                      <div key={`${key}-presets`} className="control-button-row">
+                        <button
+                          type="button"
+                          className="secondary-button compact-button"
+                          disabled={controlsDisabled}
+                          onClick={() => handlePresetValue(effectiveMember, key, "set")}
+                        >
+                          Set
+                        </button>
+                        <button
+                          type="button"
+                          className="secondary-button compact-button"
+                          disabled={controlsDisabled}
+                          onClick={() => handlePresetValue(effectiveMember, key, "clear")}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    );
                   }
                   controls = <div className="control-stack">{elements}</div>;
                 }
