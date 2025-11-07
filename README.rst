@@ -14,7 +14,7 @@ Therefore, it mostly implements a subset of CIP specification, which is used in 
 Requirements
 ============
 
-* Python 2.7
+* Python 3.9 or newer
 * Scapy (http://www.secdev.org/projects/scapy/)
 
 
@@ -35,7 +35,7 @@ This packet can be decoded using this Python script:
 
 .. code-block:: python
 
-    #!/usr/bin/env python2
+    #!/usr/bin/env python3
     import binascii
     from scapy.all import *
     import cip
@@ -48,7 +48,9 @@ This packet can be decoded using this Python script:
     pkt = Ether(rawpkt)
     pkt.show()
 
-This script prints the structure of the packet with every protocol layer (Ethernet, IP, ENIP and CIP)::
+Run the example with ``python3 <script_name>.py`` to display the decoded
+layers. The script prints the structure of the packet with every
+protocol layer (Ethernet, IP, ENIP and CIP)::
 
     ###[ Ethernet ]###
       dst       = 00:1d:9c:c8:bd:e7

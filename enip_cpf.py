@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # Copyright (c) 2015 David I. Urbina, david.urbina@utdallas.edu
 #
@@ -63,12 +63,12 @@ class ENIP_CPF(scapy_all.Packet):
     name = "ENIP_CPF"
     fields_desc = [
         utils.LEShortLenField("count", 2, count_of="items"),
-        scapy_all.PacketListField("items", [CPF_AddressDataItem('', 0, 0), CPF_AddressDataItem('', 0, 0)],
+        scapy_all.PacketListField("items", [CPF_AddressDataItem(b'', 0, 0), CPF_AddressDataItem(b'', 0, 0)],
                                   CPF_AddressDataItem, count_from=lambda p: p.count),
     ]
 
     def extract_padding(self, p):
-        return '', p
+        return b'', p
 
 
 scapy_all.bind_layers(CPF_AddressDataItem, CPF_SequencedAddressItem, type_id=0x8002)

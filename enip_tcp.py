@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # Copyright (c) 2015 Nicolas Iooss, SUTD
 #
@@ -133,11 +133,11 @@ if __name__ == '__main__':
     pkt /= ENIP_TCP()
     pkt /= ENIP_SendUnitData(items=[
         ENIP_SendUnitData_Item() / ENIP_ConnectionAddress(connection_id=1337),
-        ENIP_SendUnitData_Item() / ENIP_ConnectionPacket(sequence=4242) / scapy_all.Raw(load='test'),
+        ENIP_SendUnitData_Item() / ENIP_ConnectionPacket(sequence=4242) / scapy_all.Raw(load=b'test'),
     ])
 
     # Build!
-    data = str(pkt)
+    data = bytes(pkt)
     pkt = scapy_all.Ether(data)
     pkt.show()
 
@@ -155,4 +155,4 @@ if __name__ == '__main__':
     assert pkt[ENIP_SendUnitData].items[1].length == 6
     assert pkt[ENIP_SendUnitData].items[1].payload == pkt[ENIP_ConnectionPacket]
     assert pkt[ENIP_ConnectionPacket].sequence == 4242
-    assert pkt[ENIP_ConnectionPacket].payload.load == 'test'
+    assert pkt[ENIP_ConnectionPacket].payload.load == b'test'

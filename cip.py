@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # Copyright (c) 2015 Nicolas Iooss, SUTD; David I. Urbina, UTD
 #
@@ -58,7 +58,7 @@ class CIP_RespAttributesList(scapy_all.Packet):
     """
     fields_desc = [
         scapy_all.LEShortField("count", 0),
-        scapy_all.StrField("content", ""),
+        scapy_all.StrField("content", b""),
     ]
 
     def split_guess(self, attr_list, verbose=False):

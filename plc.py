@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # Copyright (c) 2015 Nicolas Iooss, SUTD
 #
@@ -55,8 +55,8 @@ class PLCClient(object):
             try:
                 self.sock = socket.create_connection((plc_addr, plc_port))
             except socket.error as exc:
-                logger.warn("socket error: %s", exc)
-                logger.warn("Continuing without sending anything")
+                logger.warning("socket error: %s", exc)
+                logger.warning("Continuing without sending anything")
                 self.sock = None
         else:
             self.sock = None
